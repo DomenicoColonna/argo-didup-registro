@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5b21b6">
+<meta http-equiv="cache-control" content="no-store">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Registro">
+<title>Registro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+        colors: {
+          page: '#f4f5fa',
+          ink: { DEFAULT: '#161a2b', soft: '#5b6178', faint: '#8b90a6' },
+        },
+        boxShadow: {
+          card: '0 1px 2px rgba(22,26,43,.04), 0 10px 28px -18px rgba(22,26,43,.35)',
+          lift: '0 2px 6px rgba(22,26,43,.06), 0 24px 48px -28px rgba(22,26,43,.45)',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root { --sai: env(safe-area-inset-bottom, 0px); }
+  html, body { background-color: #f4f5fa; }
+  body { overscroll-behavior-y: none; }
+  dialog:not([open]) { display: none; }
+  body { -webkit-font-smoothing: antialiased; }
+  @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .enter { animation: enter .5s cubic-bezier(.16,1,.3,1) both; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  @media (prefers-reduced-motion: reduce) { .enter { animation: none; } }
+</style>
+</head>
+<body class="bg-page text-ink font-sans">
+
+<!-- ------------------------------------------------------------- LOGIN -->
+<div id="login-view" class="min-h-screen grid place-items-center p-5
+     bg-[radial-gradient(120%_80%_at_50%_-10%,#7c3aed_0%,#4f46e5_45%,#f4f5fa_100%)]">
+  <form id="login-form" class="w-full max-w-sm bg-white rounded-3xl shadow-lift p-7 space-y-5 enter">
+    <div class="space-y-1.5">
+      <img src="/logo.svg" alt="" width="52" height="52" class="mb-3 drop-shadow-[0_8px_16px_rgba(76,29,149,.35)]">
+      <h1 class="text-2xl font-extrabold tracking-tight">Il tuo registro</h1>
+      <p class="text-sm text-ink-soft">Accedi con le credenziali di didUP Famiglia.</p>
+    </div>
+
+    <label class="block">
+      <span class="text-xs font-semibold text-ink-soft">Codice scuola</span>
+      <input name="schoolCode" required placeholder="SS12345" autocomplete="off" autocapitalize="characters"
+        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
+               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+    </label>
+    <label class="block">
+      <span class="text-xs font-semibold text-ink-soft">Utente</span>
+      <input name="username" required autocomplete="username"
+        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
+               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+    </label>
+    <label class="block">
+      <span class="text-xs font-semibold text-ink-soft">Password</span>
+      <input name="password" type="password" required autocomplete="current-password"
+        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
+               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+    </label>
+
+    <button id="login-btn"
+      class="w-full rounded-xl bg-violet-600 text-white py-3 font-semibold transition
+             hover:bg-violet-700 active:scale-[.99] disabled:opacity-60 disabled:cursor-not-allowed
+             focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+      Accedi
+    </button>
+    <p id="login-error" class="hidden text-sm text-rose-600 bg-rose-50 rounded-xl px-3.5 py-2.5"></p>
+    <p class="text-xs text-ink-faint leading-relaxed">
+      Le credenziali servono solo per ottenere il token e non vengono salvate su disco.
+    </p>
+  </form>
+</div>
+
+<!-- --------------------------------------------------------------- APP -->
+<div id="app-view" class="hidden min-h-screen pb-28 lg:pb-10 lg:pl-64">
+
+  <header class="bg-[linear-gradient(135deg,#7c3aed_0%,#4f46e5_55%,#4338ca_100%)] text-white
+                 rounded-b-[28px] px-5 pt-6 pb-16 relative lg:px-10 lg:pt-8 lg:pb-8">
+    <!-- i decori sono ritagliati qui dentro: l'header deve restare senza overflow
+         per non tagliare la tendina del periodo -->
+    <div class="absolute inset-0 overflow-hidden rounded-b-[28px] pointer-events-none">
+      <div class="absolute -right-16 -top-20 w-64 h-64 rounded-full bg-white/10"></div>
+      <div class="absolute -left-24 top-10 w-56 h-56 rounded-full bg-white/5"></div>
+    </div>
+    <div class="max-w-3xl lg:max-w-5xl mx-auto relative">
+      <div class="flex flex-wrap items-start lg:items-center gap-3">
+        <div class="order-1">
+          <p class="text-white/70 text-sm font-medium">Bentornato</p>
+          <h1 id="student-name" class="text-[26px] leading-tight font-extrabold tracking-tight"></h1>
+          <p id="student-meta" class="text-white/70 text-sm mt-0.5"></p>
+        </div>
+        <div class="order-2 lg:order-3 ml-auto lg:ml-0 flex items-center gap-2">
+          <button id="refresh-btn" title="Aggiorna i dati" aria-label="Aggiorna i dati"
+            class="w-10 h-10 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 transition"
+            data-icon="refresh"></button>
+          <button id="logout-btn" data-azione="logout" title="Esci" aria-label="Esci"
+            class="w-10 h-10 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 text-rose-400
+                   transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+                   focus-visible:outline-white"
+            data-icon="logout"></button>
+        </div>
+      <!-- su mobile va a capo sotto il saluto, su desktop entra nella stessa riga -->
+      <div class="order-3 lg:order-2 w-full lg:w-auto lg:ml-auto mt-5 lg:mt-0">
+        <div id="period" class="relative inline-block text-left">
+          <button id="period-btn" type="button" aria-haspopup="listbox" aria-expanded="false"
+            class="flex items-center gap-2 text-sm font-semibold bg-white/15 hover:bg-white/25
+                   rounded-full pl-4 pr-3 py-2 transition focus-visible:outline focus-visible:outline-2
+                   focus-visible:outline-offset-2 focus-visible:outline-white/70">
+            <span id="period-label">Tutto l'anno</span>
+            <span id="period-chevron" class="transition-transform duration-200" data-icon="chevronDown"
+                  data-icon-size="w-4 h-4"></span>
+          </button>
+          <div id="period-menu" hidden role="listbox" aria-label="Periodo"
+            class="absolute left-0 top-full mt-2 w-[17rem] max-w-[calc(100vw-2.5rem)] z-40 p-1.5
+                   bg-white text-ink rounded-2xl shadow-lift origin-top-left
+                   transition duration-150 ease-out opacity-0 scale-95 -translate-y-1"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-3xl lg:max-w-5xl mx-auto px-5 lg:px-10 -mt-10 lg:mt-7 relative">
+    <section id="tab-home" class="tab-panel hidden"></section>
+    <section id="tab-calendario" class="tab-panel hidden"></section>
+    <section id="tab-compiti" class="tab-panel hidden"></section>
+    <section id="tab-voti" class="tab-panel hidden"></section>
+    <section id="tab-media" class="tab-panel hidden"></section>
+    <p id="updated-at" class="text-center text-xs text-ink-faint mt-8"></p>
+  </main>
+
+  <!-- la sfumatura copre l'area sotto la barra gesti del telefono, altrimenti
+       sotto la navbar traspare il bianco del canvas del browser -->
+  <aside class="hidden lg:flex fixed inset-y-0 left-0 w-64 z-40 flex-col
+                bg-white border-r border-slate-200/70 p-4">
+    <div class="flex items-center gap-2.5 px-2 py-2">
+      <img src="/logo.svg" alt="" width="36" height="36">
+      <span class="font-extrabold tracking-tight">Registro</span>
+    </div>
+    <nav id="side-nav" class="mt-5 flex flex-col gap-1"></nav>
+    <div class="mt-auto rounded-2xl bg-page p-3">
+      <p id="side-name" class="font-bold text-sm truncate"></p>
+      <p id="side-meta" class="text-xs text-ink-faint truncate"></p>
+      <button data-azione="logout"
+        class="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200
+               py-2 text-sm font-semibold text-rose-500 hover:bg-rose-50 transition
+               focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
+        <span data-icon="logout" data-icon-size="w-4 h-4"></span> Esci
+      </button>
+    </div>
+  </aside>
+
+  <nav class="fixed bottom-0 inset-x-0 z-30 pointer-events-none lg:hidden
+              px-4 pt-8 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]
+              bg-gradient-to-t from-page via-page to-transparent">
+    <div class="pointer-events-auto mx-auto w-full max-w-md bg-white/95 backdrop-blur
+                border border-slate-200/70 shadow-lift rounded-[20px] grid grid-cols-5 gap-1 p-2">
+      <button data-tab="home" class="tab" data-icon="home" data-label="Home"></button>
+      <button data-tab="calendario" class="tab" data-icon="calendar" data-label="Calendario"></button>
+      <button data-tab="compiti" class="tab" data-icon="check" data-label="Compiti"></button>
+      <button data-tab="voti" class="tab" data-icon="award" data-label="Voti"></button>
+      <button data-tab="media" class="tab" data-icon="chart" data-label="Media"></button>
+    </div>
+  </nav>
+</div>
+
+<dialog id="logout-dialog"
+  class="w-[min(22rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
+         backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
+  <div class="p-6">
+    <div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 grid place-items-center" data-icon="logout"></div>
+    <h2 class="text-lg font-extrabold tracking-tight mt-3">Vuoi uscire?</h2>
+    <p class="text-sm text-ink-soft mt-1">
+      La sessione viene chiusa e dovrai reinserire codice scuola, utente e password per rientrare.
+    </p>
+    <div class="flex gap-2 mt-5">
+      <button id="logout-annulla" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
+        hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
+        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
+      <button id="logout-conferma" class="flex-1 rounded-xl bg-rose-500 text-white font-semibold py-2.5
+        hover:bg-rose-600 transition focus-visible:outline focus-visible:outline-2
+        focus-visible:outline-offset-2 focus-visible:outline-rose-600">Esci</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="/app.js?v=2"></script>
+</body>
+</html>
