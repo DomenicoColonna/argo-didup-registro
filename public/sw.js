@@ -1,5 +1,5 @@
-// Service worker minimo: serve solo a rendere l'app installabile.
-// Passa tutto alla rete (i dati del registro non vanno mai serviti da cache).
+// Minimal service worker, it only exists to make the app installable.
+// Everything goes to the network (register data must never come from cache).
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (e) => {

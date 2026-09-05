@@ -10,7 +10,7 @@ const state = {
   mediaTuttiVoti: false,
 };
 
-// -------------------------------------------------------------------- icone
+// -------------------------------------------------------------------- icons
 
 const ICON_PATHS = {
   home: '<path d="M3.5 10.6 12 3.8l8.5 6.8V19a1.5 1.5 0 0 1-1.5 1.5h-4.2V15H9.2v5.5H5A1.5 1.5 0 0 1 3.5 19z"/>',
@@ -41,14 +41,14 @@ function hydrateIcons(root = document) {
   }
 }
 
-// ------------------------------------------------------------------ helper
+// ----------------------------------------------------------------- helpers
 
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 
 /**
- * Le lezioni vanno da settembre a giugno: il calendario si muove solo li' dentro.
- * L'anno scolastico corrente si ricava da oggi (da settembre in poi e' quello nuovo),
- * non dal profilo Argo, che a inizio anno puo' ancora riportare quello vecchio.
+ * Lessons run from September to June, so the calendar only moves inside that range.
+ * The current school year comes from today's date (from September on it is the new
+ * one), not from the Argo profile, which early in the year may still hold the old one.
  */
 function limitiAnnoScolastico() {
   const oggi = new Date();
@@ -64,7 +64,7 @@ function meseNeiLimiti(d) {
 function isoDay(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-/** Le date di Argo arrivano come YYYY-MM-DD (a volte con orario) o DD/MM/YYYY. */
+/** Argo dates come as YYYY-MM-DD (sometimes with a time) or DD/MM/YYYY. */
 function parseDate(value) {
   if (!value) return null;
   const s = String(value).trim();
@@ -87,7 +87,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const fmtMedia = (n) => (n == null || !Number.isFinite(n) ? '—' : round2(n).toFixed(2));
 const plurale = (n, uno, molti) => `${n} ${n === 1 ? uno : molti}`;
 
-/** Colori del voto: verde da 6, ambra 5–6, rosso sotto il 5. */
+/** Grade colors: green from 6 up, amber between 5 and 6, red below 5. */
 function tonoVoto(v) {
   if (!Number.isFinite(v)) return { testo: 'text-ink-soft', chip: 'bg-slate-100 text-ink-soft', barra: 'bg-slate-300' };
   if (v >= 6) return { testo: 'text-emerald-700', chip: 'bg-emerald-50 text-emerald-700', barra: 'bg-emerald-500' };
@@ -95,7 +95,7 @@ function tonoVoto(v) {
   return { testo: 'text-rose-700', chip: 'bg-rose-50 text-rose-700', barra: 'bg-rose-500' };
 }
 
-/** Chip data in stile "MAG 24 / ven". */
+/** Date chip in the "MAG 24 / ven" style. */
 function chipData(iso, evidenzia = false) {
   const d = parseDate(iso);
   if (!d) return '';
@@ -124,7 +124,7 @@ const linkAzione = (testo, tab) =>
 const vuoto = (testo) =>
   `<p class="px-5 py-8 text-center text-sm text-ink-faint">${esc(testo)}</p>`;
 
-// ------------------------------------------------------------ dati derivati
+// ------------------------------------------------------------ derived data
 
 const dash = () => state.data?.dashboard || {};
 const attivi = (arr) => (arr || []).filter((x) => x && x.operazione !== 'D');
@@ -151,7 +151,7 @@ function voti() {
     .sort((a, b) => (a.giorno < b.giorno ? 1 : -1));
 }
 
-/** Un voto conta nella media se Argo non lo esclude (numMedia / faMenoMedia). */
+/** A grade counts towards the average unless Argo excludes it (numMedia / faMenoMedia). */
 function contaNellaMedia(v) {
   if (v.numerico == null) return false;
   if (state.mediaTuttiVoti) return true;
@@ -193,7 +193,7 @@ function promemoria() {
     .sort((a, b) => (a.giorno > b.giorno ? 1 : -1));
 }
 
-/** Media ricalcolata dai singoli voti: per materia, generale e per mese. */
+/** Average recomputed from the single grades, per subject, overall and per month. */
 function calcolaMedie() {
   const usati = votiPeriodo().filter(contaNellaMedia);
   const perMateria = new Map();
@@ -232,7 +232,7 @@ function calcolaMedie() {
   };
 }
 
-// ------------------------------------------------- selettore periodo (custom)
+// ------------------------------------------------ period selector (custom)
 
 let periodoAperto = false;
 
@@ -265,7 +265,7 @@ function renderPeriodo() {
   for (const b of menu.querySelectorAll('[data-pk]')) {
     b.onclick = (e) => {
       state.periodo = b.dataset.pk;
-      // il focus torna al bottone solo se la scelta arriva da tastiera (detail 0)
+      // focus goes back to the button only when the choice came from the keyboard (detail 0)
       chiudiPeriodo(e.detail === 0);
       renderPeriodo();
       render();
@@ -293,7 +293,7 @@ function chiudiPeriodo(tornaAlBottone = false) {
   if (tornaAlBottone) el('period-btn').focus();
 }
 
-/** Frecce per scorrere le voci, invio per scegliere, esc per chiudere. */
+/** Arrows move between items, enter picks one, esc closes the menu. */
 function tastieraPeriodo(e) {
   const voci = [...el('period-menu').querySelectorAll('[data-pk]')];
   if (e.key === 'Escape') return chiudiPeriodo(true);
@@ -306,7 +306,7 @@ function tastieraPeriodo(e) {
   voci[i < 0 ? (passo > 0 ? 0 : voci.length - 1) : (i + passo + voci.length) % voci.length]?.focus();
 }
 
-// -------------------------------------------------------------------- rete
+// ----------------------------------------------------------------- network
 
 async function api(path, options) {
   const res = await fetch(path, { credentials: 'same-origin', ...options });
@@ -364,7 +364,7 @@ const SCHEDE = [
   { id: 'media', icona: 'chart', nome: 'Media' },
 ];
 
-/** Voci della sidebar (solo desktop): stesse schede della barra in basso. */
+/** Sidebar entries (desktop only), same tabs as the bottom bar. */
 function creaSideNav() {
   el('side-nav').innerHTML = SCHEDE.map((s) => `
     <button class="tab-side" data-tab="${s.id}" data-icon-name="${s.icona}" data-label="${s.nome}"></button>`).join('');
@@ -528,7 +528,7 @@ function rigaVoto(v, mostraMateria = true) {
     </li>`;
 }
 
-// --- calendario
+// --- calendar
 
 function renderCalendario() {
   const eventi = { voti: new Map(), compiti: new Map(), promemoria: new Map() };
@@ -543,14 +543,14 @@ function renderCalendario() {
   const alPrimo = mese.getTime() === limiti.primo.getTime();
   const allUltimo = mese.getTime() === limiti.ultimo.getTime();
   const primo = new Date(mese.getFullYear(), mese.getMonth(), 1);
-  const offset = (primo.getDay() + 6) % 7; // la settimana parte da lunedi'
+  const offset = (primo.getDay() + 6) % 7; // weeks start on monday
   const oggi = isoDay(new Date());
 
   const celle = Array.from({ length: 42 }, (_, i) => {
     const d = new Date(primo.getFullYear(), primo.getMonth(), 1 - offset + i);
     const key = isoDay(d);
     const fuori = d.getMonth() !== mese.getMonth();
-    const weekend = d.getDay() === 0 || d.getDay() === 6; // sabato e domenica non sono giorni di scuola
+    const weekend = d.getDay() === 0 || d.getDay() === 6; // no school on saturday and sunday
     const selezionato = key === state.giornoSelezionato;
     const punti = [
       eventi.voti.get(key)?.length ? 'bg-violet-500' : null,
@@ -650,7 +650,7 @@ function renderCalendario() {
   }
 }
 
-// --- compiti
+// --- homework
 
 function renderCompiti() {
   const oggi = isoDay(new Date());
@@ -697,7 +697,7 @@ function renderCompiti() {
   }
 }
 
-// --- voti
+// --- grades
 
 function renderVoti() {
   const lista = votiPeriodo();
@@ -728,7 +728,7 @@ function renderVoti() {
     </div>`;
 }
 
-// --- media
+// --- average
 
 function renderMedia() {
   const m = calcolaMedie();
@@ -836,7 +836,7 @@ el('logout-conferma').addEventListener('click', async (e) => {
   await api('/api/logout', { method: 'POST' }).catch(() => {});
   location.reload();
 });
-// click sullo sfondo del modal
+// click on the modal backdrop
 dialogoUscita.addEventListener('click', (e) => {
   if (e.target === dialogoUscita) dialogoUscita.close();
 });
@@ -850,7 +850,7 @@ for (const btn of document.querySelectorAll('.tab')) {
   btn.addEventListener('click', () => { state.tab = btn.dataset.tab; window.scrollTo({ top: 0 }); render(); });
 }
 
-/** ?debug=1 : tinge di rosso lo sfondo della pagina e dice cosa c'e' sul bordo basso. */
+/** ?debug=1 paints the page background red and reports what sits at the bottom edge. */
 function mostraDiagnostica() {
   document.documentElement.style.background = '#e11d48';
   const descrivi = (y) => document.elementsFromPoint(Math.round(innerWidth / 2), y)
@@ -880,9 +880,9 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// tab iniziale via query string (?tab=voti), comodo anche per i test
+// initial tab from the query string (?tab=voti), handy for testing too
 const tabIniziale = new URLSearchParams(location.search).get('tab');
 if (['home', 'calendario', 'compiti', 'voti', 'media'].includes(tabIniziale)) state.tab = tabIniziale;
 
-// sessione gia' attiva?
+// is there a session already?
 api('/api/data').then((data) => { state.data = data; mostraApp(); }).catch(() => {});

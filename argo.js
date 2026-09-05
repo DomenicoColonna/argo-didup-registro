@@ -1,7 +1,7 @@
 'use strict';
 /**
- * Client per l'API di didUP Famiglia (la stessa che usa l'app ufficiale).
- * Flusso: OAuth2 + PKCE su auth.portaleargo.it -> token -> endpoint appfamiglia.
+ * Client for the didUP Famiglia API (the same one the official app uses).
+ * Flow: OAuth2 + PKCE on auth.portaleargo.it, then token, then appfamiglia endpoints.
  */
 const crypto = require('node:crypto');
 
@@ -16,7 +16,7 @@ const randomString = (n) =>
   Array.from({ length: n }, () => ALPHANUM[crypto.randomInt(ALPHANUM.length)]).join('');
 const sha256url = (s) => crypto.createHash('sha256').update(s).digest('base64url');
 
-/** Formato data richiesto dall'API: 2026-09-05 14:30:00.000 */
+/** Date format the API expects, e.g. 2026-09-05 14:30:00.000 */
 const formatDate = (d) => {
   const date = new Date(d);
   const p = (n, l = 2) => String(n).padStart(l, '0');
@@ -26,7 +26,7 @@ const formatDate = (d) => {
   );
 };
 
-/** Cookie jar minimale: basta per il flusso SSO su *.portaleargo.it */
+/** Minimal cookie jar, enough for the SSO flow on *.portaleargo.it */
 class Jar {
   constructor() { this.cookies = new Map(); }
   store(res) {
@@ -41,8 +41,8 @@ class Jar {
 }
 
 /**
- * fetch con cookie e redirect gestiti a mano: l'ultimo hop del login punta a
- * uno schema custom (it.argosoft...://) che fetch non puo' seguire.
+ * fetch with cookies and redirects handled by hand. The last hop of the login
+ * points to a custom scheme (it.argosoft...://) that fetch cannot follow.
  */
 async function hop(url, { method = 'GET', body, headers = {}, jar, maxRedirects = 0 } = {}) {
   let current = url;
@@ -72,8 +72,8 @@ async function hop(url, { method = 'GET', body, headers = {}, jar, maxRedirects 
 }
 
 /**
- * Login SSO: restituisce il code di autorizzazione.
- * @param onStep - callback opzionale per il debug di ogni passaggio
+ * SSO login, returns the authorization code.
+ * @param onStep optional callback, called at every step (useful for debugging)
  */
 async function getAuthCode({ schoolCode, username, password }, onStep = () => {}) {
   const jar = new Jar();
@@ -147,7 +147,7 @@ async function exchangeToken({ code, codeVerifier }) {
   return { ...data, expireDate };
 }
 
-/** Chiamata generica all'API appfamiglia (POST se c'e' un body, altrimenti GET). */
+/** Generic call to the appfamiglia API (POST when there is a body, GET otherwise). */
 async function apiRequest(session, endpoint, body) {
   const headers = {
     accept: 'application/json',
@@ -222,7 +222,7 @@ async function loadDashboard(session) {
   return session.dashboard;
 }
 
-/** Login completo: token -> login -> profilo -> dashboard. */
+/** Full login: token, then login, profilo and dashboard. */
 async function fullLogin(credentials, onStep = () => {}) {
   const session = {};
   session.token = await exchangeToken(await getAuthCode(credentials, onStep));

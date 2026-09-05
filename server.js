@@ -1,9 +1,9 @@
 'use strict';
 /**
- * Mini registro elettronico: server locale che fa da ponte verso l'API Argo
- * (che non manda header CORS, quindi il browser non puo' chiamarla da sola)
- * e serve i file statici di public/.
- * Le credenziali restano in RAM, non vengono mai scritte su disco.
+ * Small local server that sits between the browser and the Argo API (which
+ * sends no CORS headers, so the browser cannot call it directly) and serves
+ * the static files in public/.
+ * Credentials stay in memory and are never written to disk.
  */
 const http = require('node:http');
 const fs = require('node:fs');
@@ -14,8 +14,8 @@ const { fullLogin, loadDashboard, refreshIfNeeded } = require('./argo');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SESSION_FILE = path.join(__dirname, 'dati', 'sessioni.json');
-const DURATA_SESSIONE = 180 * 24 * 3600 * 1000; // 180 giorni senza uso, poi si rifà il login
-const DATI_FRESCHI_PER = 10 * 60 * 1000;         // oltre 10 minuti i dati vengono riscaricati
+const DURATA_SESSIONE = 180 * 24 * 3600 * 1000; // 180 days without use, then you log in again
+const DATI_FRESCHI_PER = 10 * 60 * 1000;         // older than 10 minutes and the data gets fetched again
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
@@ -23,9 +23,9 @@ const MIME = {
 
 const sessions = new Map();
 
-// ------------------------------------------------- sessioni persistenti su disco
-// Si salvano token e dati Argo (mai la password) in dati/sessioni.json, cosi' un
-// riavvio del server non butta fuori nessuno. Il file e' leggibile solo dall'utente.
+// ---------------------------------------------------- sessions persisted on disk
+// Tokens and Argo data (never the password) go to dati/sessioni.json, so a server
+// restart does not log anyone out. Only the owner can read the file.
 
 function caricaSessioni() {
   try {
@@ -37,7 +37,7 @@ function caricaSessioni() {
       sessions.set(sid, sessione);
     }
   } catch {
-    // primo avvio o file assente: si parte senza sessioni
+    // first run or missing file, start with no sessions
   }
 }
 
@@ -50,7 +50,7 @@ function salvaSessioni() {
   }, 250);
 }
 
-/** Aggiorna token e dashboard se servono; se Argo rifiuta il token la sessione muore. */
+/** Refresh token and dashboard when needed. If Argo rejects the token the session is dropped. */
 async function aggiornaSeServe(session, forza) {
   const vecchi = !session.aggiornato || Date.now() - new Date(session.aggiornato).getTime() > DATI_FRESCHI_PER;
   if (!forza && !vecchi) return;
@@ -77,7 +77,7 @@ const send = (res, status, payload) => {
 
 const sidOf = (req) => (req.headers.cookie || '').match(/(?:^|;\s*)sid=([^;]+)/)?.[1];
 
-/** Solo i dati che servono al frontend: niente token, niente credenziali. */
+/** Only what the frontend needs, no tokens and no credentials. */
 const publicPayload = (session) => ({
   profilo: {
     alunno: session.profilo.alunno,
@@ -117,7 +117,7 @@ const server = http.createServer(async (req, res) => {
           salvaSessioni();
           return send(res, 401, { error: 'Sessione scaduta, rifai il login' });
         }
-        // Argo irraggiungibile: si mostrano gli ultimi dati scaricati
+        // Argo unreachable, show whatever we downloaded last time
         console.error('aggiornamento fallito:', err.message);
       }
       session.ultimoUso = Date.now();
@@ -137,7 +137,7 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(PUBLIC_DIR)) return send(res, 403, { error: 'Vietato' });
     const data = await fs.promises.readFile(file).catch(() => null);
     if (!data) return send(res, 404, { error: 'Not found' });
-    // niente cache: durante lo sviluppo il telefono deve vedere subito le modifiche
+    // no cache, the phone has to see changes right away while developing
     res.writeHead(200, {
       'content-type': MIME[path.extname(file)] || 'application/octet-stream',
       'cache-control': 'no-store',

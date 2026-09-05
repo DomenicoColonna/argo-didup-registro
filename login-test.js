@@ -1,8 +1,8 @@
 'use strict';
 /**
- * Diagnostica del login: mostra a che punto del flusso Argo si blocca.
- * Uso: node login-test.js            (chiede i dati a schermo)
- *      ARGO_SCUOLA=SS12345 ARGO_USER=... ARGO_PASS=... node login-test.js
+ * Login diagnostics, shows at which step the Argo flow fails.
+ * Usage: node login-test.js            (asks for the credentials)
+ *        ARGO_SCUOLA=SS12345 ARGO_USER=... ARGO_PASS=... node login-test.js
  */
 const readline = require('node:readline');
 const { fullLogin } = require('./argo');
