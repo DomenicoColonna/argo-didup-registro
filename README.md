@@ -42,6 +42,23 @@ Tokens, profile and downloaded data go to `dati/sessioni.json` (mode 600,
 ignored by git) so they survive restarts. The cookie lasts 180 days and the Argo
 token renews itself with the refresh token.
 
+## Deploying on Netlify
+
+`netlify.toml` publishes `public/` and routes `/api/*` to
+`netlify/functions/api.js`, which exposes the same three endpoints as
+`server.js`. Functions are stateless, so there is no `dati/sessioni.json`
+there. The session (Argo tokens, login data and a slice of the profile) lives in
+an encrypted cookie and the dashboard is downloaded again on every request.
+
+One environment variable is required in the Netlify site settings:
+
+```
+SESSION_SECRET=<a long random string, e.g. openssl rand -hex 32>
+```
+
+Change it and every phone has to log in again. Since Netlify serves over HTTPS
+the PWA can be installed from there.
+
 ## Installing it on a phone (PWA)
 
 `public/manifest.webmanifest`, the icons and `public/sw.js` make the app

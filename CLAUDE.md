@@ -10,6 +10,8 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
   static files from `public/`, sessions in `dati/sessioni.json`
 - `login-test.js` step by step login diagnostics
 - `public/app.js` all the UI logic, `public/index.html` markup and Tailwind config
+- `netlify/functions/api.js` the same API as `server.js` for Netlify, session in an
+  encrypted cookie (needs `SESSION_SECRET`), config in `netlify.toml`
 
 ## Rules
 
@@ -22,6 +24,8 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 - The calendar only shows September to June of the current school year.
 - Code comments are in English. UI text and variable names stay in Italian.
 - Commit and push only when asked.
+- `server.js` (VPS) and `netlify/functions/api.js` (Netlify) must keep the same
+  endpoints and response shape, the frontend does not know which one it talks to.
 
 ## Commits
 
