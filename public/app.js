@@ -585,7 +585,8 @@ function renderCalendario() {
   const eventi = { voti: new Map(), compiti: new Map(), promemoria: new Map() };
   const push = (map, key, val) => key && map.set(key, [...(map.get(key) || []), val]);
   for (const v of voti()) push(eventi.voti, v.giorno, v);
-  for (const c of compiti()) push(eventi.compiti, c.giorno, c);
+  const tuttiCompiti = compiti();
+  for (const c of tuttiCompiti) push(eventi.compiti, c.giorno, c);
   for (const p of promemoria()) push(eventi.promemoria, p.giorno, p);
 
   state.mese = meseNeiLimiti(state.mese);
@@ -605,7 +606,9 @@ function renderCalendario() {
     const selezionato = key === state.giornoSelezionato;
     const punti = [
       eventi.voti.get(key)?.length ? 'bg-violet-500' : null,
-      eventi.compiti.get(key)?.length ? 'bg-amber-500' : null,
+      // amber while something is still to do, green once every homework of the day is done
+      eventi.compiti.get(key)?.length
+        ? (eventi.compiti.get(key).every((c) => c.fatto) ? 'bg-emerald-500' : 'bg-amber-500') : null,
       eventi.promemoria.get(key)?.length ? 'bg-sky-500' : null,
     ].filter(Boolean);
 
@@ -641,8 +644,20 @@ function renderCalendario() {
         </div></div>`;
     }],
     ['Compiti', eventi.compiti.get(sel), (c) => `
-      <div><p class="font-bold text-[15px]">${esc(c.materia)}</p>
-      <p class="text-sm text-ink-soft whitespace-pre-wrap">${esc(c.testo)}</p></div>`],
+      <div class="flex gap-3 items-start rounded-2xl -mx-2 px-2 py-1.5 transition-colors ${c.fatto ? 'bg-emerald-50/80' : ''}">
+        <div class="min-w-0 flex-1">
+          <p class="font-bold text-[15px] ${c.fatto ? 'line-through text-ink-faint' : ''}">${esc(c.materia)}</p>
+          <p class="text-sm whitespace-pre-wrap ${c.fatto ? 'line-through text-ink-faint' : 'text-ink-soft'}">${esc(c.testo)}</p>
+          ${c.note ? `
+            <button type="button" data-note="${esc(c.chiave)}"
+              class="mt-2 w-full text-left rounded-xl bg-violet-50 px-3 py-2 text-[13px] text-violet-900
+                whitespace-pre-wrap hover:bg-violet-100 transition">${esc(c.note)}</button>` : ''}
+        </div>
+        <div class="shrink-0 flex flex-col items-center gap-1 -mr-1">
+          ${bottoneFatto(c)}
+          ${bottoneNote(c)}
+        </div>
+      </div>`],
     ['Promemoria', eventi.promemoria.get(sel), (p) => `
       <div><p class="text-sm text-ink whitespace-pre-wrap">${esc(p.testo)}</p>
       <p class="text-xs text-ink-faint mt-0.5">${esc([p.docente, p.ora].filter(Boolean).join(' · '))}</p></div>`],
@@ -674,6 +689,7 @@ function renderCalendario() {
         <div class="flex flex-wrap gap-4 mt-4 pt-3 border-t border-slate-100 text-xs text-ink-soft">
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-violet-500"></span>voti</span>
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>compiti</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>compiti fatti</span>
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-500"></span>promemoria</span>
         </div>
       </div>`)}
@@ -699,6 +715,7 @@ function renderCalendario() {
   for (const b of document.querySelectorAll('.giorno')) {
     b.onclick = () => { state.giornoSelezionato = b.dataset.giorno; render(); };
   }
+  collegaAzioniCompiti(el('tab-calendario'), tuttiCompiti);
 }
 
 // --- homework
@@ -760,7 +777,8 @@ function renderCompiti() {
       ${[...perGiorno.entries()].map(([giorno, items]) => card(`
         <ul class="divide-y divide-slate-100">
           ${items.map((c, i) => `
-            <li class="p-4 flex gap-3.5 items-start">
+            <li class="p-4 flex gap-3.5 items-start first:rounded-t-3xl last:rounded-b-3xl transition-colors
+                ${c.fatto ? 'bg-emerald-50/80' : ''}">
               ${i === 0 ? chipData(giorno, distanzaGiorno(giorno, oggi)) : '<div class="w-14 shrink-0"></div>'}
               <div class="min-w-0 flex-1">
                 <p class="font-bold text-[15px] ${c.fatto ? 'line-through text-ink-faint' : ''}">${esc(c.materia)}</p>
@@ -786,6 +804,11 @@ function renderCompiti() {
   for (const b of pannello.querySelectorAll('[data-passati]')) {
     b.onclick = () => { state.compitiPassati = b.dataset.passati === 'true'; render(); };
   }
+  collegaAzioniCompiti(pannello, tutti);
+}
+
+/** Wires the done and note buttons of every homework row inside `pannello`. */
+function collegaAzioniCompiti(pannello, tutti) {
   for (const b of pannello.querySelectorAll('[data-fatto]')) {
     b.onclick = () => {
       const c = tutti.find((x) => x.chiave === b.dataset.fatto);
