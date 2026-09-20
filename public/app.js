@@ -10,7 +10,7 @@ const state = {
   mediaTuttiVoti: false,
   stato: {},          // homework key -> { fatto, note }, see caricaStato
   orario: null,       // { lun: [{ inizio, fine, materia }], ... ven }, see caricaStato
-  giornoOrario: null, // day shown on mobile, defaults to today (monday on weekends)
+  giornoOrario: null, // day shown on mobile, reset on every visit, see giornoOrarioPredefinito
   statoRemoto: true,  // false when the server cannot store it (Netlify without Supabase)
 };
 
@@ -463,6 +463,9 @@ function render() {
   el('side-name').textContent = p.alunno?.nominativo || '';
   el('side-meta').textContent = el('student-meta').textContent;
 
+  // leaving the timetable forgets the day you swiped to, so it opens on the right one next time
+  if (state.tab !== 'orario') state.giornoOrario = null;
+
   for (const panel of document.querySelectorAll('.tab-panel')) panel.classList.add('hidden');
   const panel = el(`tab-${state.tab}`);
   panel.classList.remove('hidden');
@@ -909,10 +912,30 @@ const GIORNI_ORARIO = [
 ];
 const orarioVuoto = () => Object.fromEntries(GIORNI_ORARIO.map((g) => [g.id, []]));
 
-/** Today's key, monday on saturday and sunday (no school). */
-function giornoOrarioOggi() {
-  const i = (new Date().getDay() + 6) % 7;
-  return GIORNI_ORARIO[i]?.id || 'lun';
+/** Today's key, null on saturday and sunday (no school). */
+function giornoOrarioOggi(d = new Date()) {
+  return GIORNI_ORARIO[(d.getDay() + 6) % 7]?.id || null;
+}
+
+/** First school day from `d` on, today included. */
+function giornoScolastico(d) {
+  for (let i = 0; i < 7; i++) {
+    const g = giornoOrarioOggi(new Date(d.getFullYear(), d.getMonth(), d.getDate() + i));
+    if (g) return g;
+  }
+  return 'lun';
+}
+
+/**
+ * Which day to show when the tab is opened: today during school hours
+ * (06:00 to 15:00), the next school day outside of them.
+ */
+function giornoOrarioPredefinito(adesso = new Date()) {
+  const ora = adesso.getHours();
+  const inGiornata = ora >= 6 && ora < 15 && giornoOrarioOggi(adesso);
+  if (inGiornata) return inGiornata;
+  const domani = new Date(adesso.getFullYear(), adesso.getMonth(), adesso.getDate() + 1);
+  return giornoScolastico(ora < 6 ? adesso : domani);
 }
 
 /** Subjects known from Argo (grades and lessons) for the autocomplete. */
@@ -929,7 +952,7 @@ const oreDel = (giorno) => [...(state.orario?.[giorno] || [])]
 
 function renderOrario() {
   if (!state.orario) state.orario = orarioVuoto();
-  if (!state.giornoOrario) state.giornoOrario = giornoOrarioOggi();
+  if (!state.giornoOrario) state.giornoOrario = giornoOrarioPredefinito();
   const oggi = giornoOrarioOggi();
   const adesso = new Date().toTimeString().slice(0, 5);
   const totale = GIORNI_ORARIO.reduce((n, g) => n + (state.orario[g.id] || []).length, 0);
@@ -966,7 +989,8 @@ function renderOrario() {
   const colonna = (g) => {
     const ore = oreDel(g.id);
     return `
-      <div data-colonna="${g.id}" class="${state.giornoOrario === g.id ? '' : 'hidden'} lg:block">
+      <div data-colonna="${g.id}" class="${state.giornoOrario === g.id
+        ? (state.versoOrario ? `scorri-${state.versoOrario}` : '') : 'hidden'} lg:block">
         <div class="hidden lg:flex items-baseline gap-2 mb-2 px-1">
           <h3 class="font-extrabold text-[15px] ${g.id === oggi ? 'text-violet-700' : ''}">${g.nome}</h3>
           <span class="ml-auto text-xs text-ink-faint">${ore.length ? plurale(ore.length, 'ora', 'ore') : ''}</span>
@@ -995,13 +1019,17 @@ function renderOrario() {
       </div>
       ${state.statoRemoto ? '' : `<p class="px-4 pb-3 -mt-1 text-xs text-amber-700">
         L'orario resta solo su questo dispositivo: il server non ha un database configurato.</p>`}`)}
-    <div class="mt-3 lg:grid lg:grid-cols-5 lg:gap-3 lg:items-start">
+    <div id="orario-giorni" class="mt-3 lg:grid lg:grid-cols-5 lg:gap-3 lg:items-start">
       ${GIORNI_ORARIO.map(colonna).join('')}
     </div>`;
 
+  state.versoOrario = null; // the animation runs once, not on every later render
   const pannello = el('tab-orario');
   for (const b of pannello.querySelectorAll('[data-giorno-orario]')) {
-    b.onclick = () => { state.giornoOrario = b.dataset.giornoOrario; render(); };
+    b.onclick = () => {
+      const i = GIORNI_ORARIO.findIndex((g) => g.id === b.dataset.giornoOrario);
+      cambiaGiornoOrario(i - GIORNI_ORARIO.findIndex((g) => g.id === state.giornoOrario));
+    };
   }
   for (const b of pannello.querySelectorAll('[data-aggiungi-ora]')) {
     b.onclick = () => apriOra(b.dataset.aggiungiOra, null);
@@ -1012,6 +1040,42 @@ function renderOrario() {
       apriOra(giorno, Number(i));
     };
   }
+  scorrimentoGiorni(el('orario-giorni'));
+}
+
+/** Moves `passo` days, stopping at monday and friday. */
+function cambiaGiornoOrario(passo) {
+  const i = GIORNI_ORARIO.findIndex((g) => g.id === state.giornoOrario);
+  const prossimo = GIORNI_ORARIO[Math.min(Math.max(i + passo, 0), GIORNI_ORARIO.length - 1)];
+  if (!prossimo || prossimo.id === state.giornoOrario) return;
+  state.giornoOrario = prossimo.id;
+  state.versoOrario = passo > 0 ? 'avanti' : 'indietro';
+  render();
+}
+
+/**
+ * Horizontal swipe changes day (phone only, on desktop every day is visible).
+ * A gesture counts when it is clearly sideways, so the page keeps scrolling.
+ */
+function scorrimentoGiorni(box) {
+  if (!box) return;
+  let x0 = 0;
+  let y0 = 0;
+  let valido = false;
+  box.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return (valido = false);
+    x0 = e.touches[0].clientX;
+    y0 = e.touches[0].clientY;
+    valido = true;
+  }, { passive: true });
+  box.addEventListener('touchend', (e) => {
+    if (!valido) return;
+    valido = false;
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    cambiaGiornoOrario(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 /** Mirrors the timetable in localStorage and sends the whole week to the server. */

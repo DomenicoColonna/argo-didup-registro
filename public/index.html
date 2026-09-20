@@ -44,7 +44,13 @@
   .enter { animation: enter .5s cubic-bezier(.16,1,.3,1) both; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { scrollbar-width: none; }
-  @media (prefers-reduced-motion: reduce) { .enter { animation: none; } }
+  @keyframes scorri-avanti { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  @keyframes scorri-indietro { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  .scorri-avanti { animation: scorri-avanti .28s cubic-bezier(.16,1,.3,1) both; }
+  .scorri-indietro { animation: scorri-indietro .28s cubic-bezier(.16,1,.3,1) both; }
+  @media (prefers-reduced-motion: reduce) {
+    .enter, .scorri-avanti, .scorri-indietro { animation: none; }
+  }
 </style>
 </head>
 <body class="bg-page text-ink font-sans">
@@ -276,6 +282,6 @@
   </form>
 </dialog>
 
-<script src="/app.js?v=7"></script>
+<script src="/app.js?v=8"></script>
 </body>
 </html>

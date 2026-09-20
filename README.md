@@ -80,6 +80,11 @@ Argo are offered as autocomplete. On the phone one day at a time (today by
 default, monday on weekends), on desktop the five days side by side. The slot
 running right now is highlighted.
 
+The day opens by itself: today between 06:00 and 15:00, the next school day
+outside those hours (so after 15:00 you already see tomorrow, and on weekends
+monday). A horizontal swipe moves between days. Leaving the tab forgets the day
+you swiped to.
+
 It travels as a whole through `/api/orario` (`GET` and `PUT`) and is stored
 by `stato.js` next to the homework state: the `orario` table on Supabase, one
 row per student with the week as JSON, or `dati/orario.json` on the VPS, with
