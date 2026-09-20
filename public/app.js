@@ -3,7 +3,7 @@
 const state = {
   data: null,
   tab: 'home',
-  periodo: 'tutti',
+  periodo: '*',       // Argo's own "Intero Anno" period, see opzioniPeriodo
   mese: startOfMonth(new Date()),
   giornoSelezionato: isoDay(new Date()),
   compitiPassati: false,
@@ -184,7 +184,7 @@ function contaNellaMedia(v) {
 
 function votiPeriodo() {
   const all = voti();
-  return state.periodo === 'tutti' ? all : all.filter((v) => v.pkPeriodo === state.periodo);
+  return state.periodo === '*' ? all : all.filter((v) => v.pkPeriodo === state.periodo);
 }
 
 /** Short djb2 hash, enough to tell two homework texts apart. */
@@ -279,15 +279,21 @@ function calcolaMedie() {
 
 let periodoAperto = false;
 
+/**
+ * Argo already lists an "Intero Anno" period with pk "*", so no option of our
+ * own. If a school does not send it, one gets added at the top.
+ */
 function opzioniPeriodo() {
+  const lista = periodi();
+  if (lista.some((p) => p.pk === '*')) return lista;
   const anno = state.data?.profilo?.anno?.anno;
-  return [{ pk: 'tutti', nome: "Tutto l'anno", nota: anno ? `Anno scolastico ${anno}` : '' }, ...periodi()];
+  return [{ pk: '*', nome: 'Intero anno', nota: anno ? `Anno scolastico ${anno}` : '' }, ...lista];
 }
 
 function renderPeriodo() {
   const menu = el('period-menu');
   const opzioni = opzioniPeriodo();
-  const attiva = opzioni.find((o) => o.pk === state.periodo) || opzioni[0];
+  const attiva = opzioni.find((o) => o.pk === state.periodo) || opzioni.find((o) => o.pk === '*') || opzioni[0];
   el('period-label').textContent = attiva.nome;
 
   menu.innerHTML = opzioni.map((o) => {
