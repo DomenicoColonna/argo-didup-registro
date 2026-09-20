@@ -6,7 +6,7 @@ const state = {
   periodo: '*',       // Argo's own "Intero Anno" period, see opzioniPeriodo
   mese: startOfMonth(new Date()),
   giornoSelezionato: isoDay(new Date()),
-  compitiPassati: false,
+  filtroCompiti: 'arrivo', // 'arrivo' | 'tutti' | 'dafare' | 'fatti'
   mediaTuttiVoti: false,
   stato: {},          // homework key -> { fatto, note }, see caricaStato
   statoRemoto: true,  // false when the server cannot store it (Netlify without Supabase)
@@ -744,36 +744,43 @@ const bottoneNote = (c) => `
 function renderCompiti() {
   const oggi = isoDay(new Date());
   const tutti = compiti();
-  const lista = state.compitiPassati ? tutti : tutti.filter((c) => c.giorno >= oggi);
+  const FILTRI = {
+    arrivo: { nome: 'In arrivo', tiene: (c) => c.giorno >= oggi, vuoto: 'Nessun compito in arrivo.' },
+    tutti: { nome: 'Tutti', tiene: () => true, vuoto: 'Nessun compito.' },
+    dafare: { nome: 'Da fare', tiene: (c) => !c.fatto, vuoto: 'Niente da fare, tutto fatto.' },
+    fatti: { nome: 'Fatti', tiene: (c) => c.fatto, vuoto: 'Ancora nessun compito segnato come fatto.' },
+  };
+  const attivo = FILTRI[state.filtroCompiti] || FILTRI.arrivo;
+  const lista = tutti.filter(attivo.tiene);
   const perGiorno = new Map();
   for (const c of lista) perGiorno.set(c.giorno, [...(perGiorno.get(c.giorno) || []), c]);
   const fatti = lista.filter((c) => c.fatto).length;
 
-  const filtro = (valore, testo) => `
-    <button data-passati="${valore}" class="px-4 py-1.5 rounded-full text-sm font-semibold transition
-      ${String(state.compitiPassati) === valore
+  const filtro = (id, f) => `
+    <button data-filtro="${id}" class="py-1.5 rounded-full text-[13px] font-semibold text-center transition
+      ${attivo === f
         ? 'bg-white text-ink ring-1 ring-slate-200 shadow-[0_1px_2px_rgba(22,26,43,.10),0_8px_16px_-8px_rgba(22,26,43,.55)]'
         : 'text-ink-soft hover:text-ink'}">
-      ${testo}</button>`;
+      ${f.nome}</button>`;
 
   const riepilogo = lista.length
     ? `${plurale(lista.length - fatti, 'da fare', 'da fare')} · ${plurale(fatti, 'fatto', 'fatti')}`
     : '';
 
   el('tab-compiti').innerHTML = `
-    ${card(`<div class="p-4 flex items-center gap-3">
-        <div class="mr-auto min-w-0">
+    ${card(`<div class="p-4">
+        <div class="flex items-baseline gap-3">
           <h2 class="text-[17px] font-extrabold tracking-tight">Compiti</h2>
-          ${riepilogo ? `<p class="text-[13px] text-ink-soft truncate">${riepilogo}</p>` : ''}
+          ${riepilogo ? `<p class="ml-auto text-[13px] text-ink-soft truncate">${riepilogo}</p>` : ''}
         </div>
-        <div class="flex gap-1 bg-slate-100 rounded-full p-1 shrink-0">
-          ${filtro('false', 'In arrivo')}${filtro('true', 'Tutti')}
+        <div class="mt-3 grid grid-cols-4 gap-1 bg-slate-100 rounded-full p-1">
+          ${Object.entries(FILTRI).map(([id, f]) => filtro(id, f)).join('')}
         </div>
       </div>
       ${state.statoRemoto ? '' : `<p class="px-4 pb-3 -mt-1 text-xs text-amber-700">
         Fatti e note restano solo su questo dispositivo: il server non ha un database configurato.</p>`}`)}
     <div class="mt-3 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
-      ${perGiorno.size === 0 ? card(vuoto('Nessun compito da fare.')) : ''}
+      ${perGiorno.size === 0 ? card(vuoto(attivo.vuoto)) : ''}
       ${[...perGiorno.entries()].map(([giorno, items]) => card(`
         <ul class="divide-y divide-slate-100">
           ${items.map((c, i) => `
@@ -801,8 +808,8 @@ function renderCompiti() {
     </div>`;
 
   const pannello = el('tab-compiti');
-  for (const b of pannello.querySelectorAll('[data-passati]')) {
-    b.onclick = () => { state.compitiPassati = b.dataset.passati === 'true'; render(); };
+  for (const b of pannello.querySelectorAll('[data-filtro]')) {
+    b.onclick = () => { state.filtroCompiti = b.dataset.filtro; render(); };
   }
   collegaAzioniCompiti(pannello, tutti);
 }
