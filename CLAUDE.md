@@ -7,10 +7,11 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 
 - `argo.js` API client (OAuth2 PKCE login, token refresh, `apiRequest`)
 - `server.js` HTTP server on port 3000, `/api/login`, `/api/data`, `/api/logout`,
-  `/api/compiti`, static files from `public/`, sessions in `dati/sessioni.json`
-- `stato.js` homework done flags and notes, Supabase (`SUPABASE_URL` and
-  `SUPABASE_SERVICE_KEY`) or `dati/compiti.json` on the VPS; the table and the
-  `keepalive_ping()` function are in `supabase/schema.sql`
+  `/api/compiti`, `/api/orario`, static files from `public/`, sessions in
+  `dati/sessioni.json`
+- `stato.js` homework done flags and notes plus the weekly timetable, Supabase
+  (`SUPABASE_URL` and `SUPABASE_SERVICE_KEY`) or `dati/*.json` on the VPS; the
+  tables and the `keepalive_ping()` function are in `supabase/schema.sql`
 - `netlify/functions/keepalive.js` and `.github/workflows/keepalive.yml` ping
   Supabase daily so the free project does not pause
 - `login-test.js` step by step login diagnostics

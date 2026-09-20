@@ -9,6 +9,8 @@ const state = {
   filtroCompiti: 'arrivo', // 'arrivo' | 'tutti' | 'dafare' | 'fatti'
   mediaTuttiVoti: false,
   stato: {},          // homework key -> { fatto, note }, see caricaStato
+  orario: null,       // { lun: [{ inizio, fine, materia }], ... ven }, see caricaStato
+  giornoOrario: null, // day shown on mobile, defaults to today (monday on weekends)
   statoRemoto: true,  // false when the server cannot store it (Netlify without Supabase)
 };
 
@@ -31,6 +33,7 @@ const ICON_PATHS = {
   arrowLeft: '<path d="M14.5 5.5 8 12l6.5 6.5"/>',
   arrowRight: '<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
   pencil: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/>',
+  plus: '<path d="M12 5.5v13M5.5 12h13"/>',
 };
 
 function icon(name, cls = 'w-5 h-5') {
@@ -409,6 +412,7 @@ const SCHEDE = [
   { id: 'home', icona: 'home', nome: 'Home' },
   { id: 'calendario', icona: 'calendar', nome: 'Calendario' },
   { id: 'compiti', icona: 'check', nome: 'Compiti' },
+  { id: 'orario', icona: 'clock', nome: 'Orario' },
   { id: 'voti', icona: 'award', nome: 'Voti' },
   { id: 'media', icona: 'chart', nome: 'Media' },
 ];
@@ -467,6 +471,7 @@ function render() {
     home: renderHome,
     calendario: renderCalendario,
     compiti: renderCompiti,
+    orario: renderOrario,
     voti: renderVoti,
     media: renderMedia,
   })[state.tab]();
@@ -846,14 +851,21 @@ async function caricaStato() {
     state.stato = {};
   }
   try {
-    const { stato } = await api('/api/compiti');
+    state.orario = JSON.parse(localStorage.getItem(chiaveLocale() + ':orario')) || orarioVuoto();
+  } catch {
+    state.orario = orarioVuoto();
+  }
+  try {
+    const [{ stato }, { orario }] = await Promise.all([api('/api/compiti'), api('/api/orario')]);
     state.stato = { ...state.stato, ...stato };
+    state.orario = orario;
     state.statoRemoto = true;
     localStorage.setItem(chiaveLocale(), JSON.stringify(state.stato));
+    localStorage.setItem(chiaveLocale() + ':orario', JSON.stringify(state.orario));
   } catch (ex) {
     if (/non configurato/i.test(ex.message)) state.statoRemoto = false;
   }
-  if (['home', 'compiti', 'calendario'].includes(state.tab)) render();
+  if (['home', 'compiti', 'calendario', 'orario'].includes(state.tab)) render();
 }
 
 /** Optimistic: the UI updates right away, the server call follows. */
@@ -885,6 +897,197 @@ function apriNota(c) {
   el('nota-input').focus();
 }
 function chiudiNota() { el('nota-dialog').close(); notaAperta = null; }
+
+// --- timetable
+
+const GIORNI_ORARIO = [
+  { id: 'lun', nome: 'Lunedì', breve: 'Lun' },
+  { id: 'mar', nome: 'Martedì', breve: 'Mar' },
+  { id: 'mer', nome: 'Mercoledì', breve: 'Mer' },
+  { id: 'gio', nome: 'Giovedì', breve: 'Gio' },
+  { id: 'ven', nome: 'Venerdì', breve: 'Ven' },
+];
+const orarioVuoto = () => Object.fromEntries(GIORNI_ORARIO.map((g) => [g.id, []]));
+
+/** Today's key, monday on saturday and sunday (no school). */
+function giornoOrarioOggi() {
+  const i = (new Date().getDay() + 6) % 7;
+  return GIORNI_ORARIO[i]?.id || 'lun';
+}
+
+/** Subjects known from Argo (grades and lessons) for the autocomplete. */
+function materieNote() {
+  const set = new Set();
+  for (const v of voti()) set.add(v.materia);
+  for (const l of attivi(dash().registro)) if (l.materia) set.add(l.materia);
+  return [...set].filter((m) => m && m !== '—').sort((a, b) => a.localeCompare(b, 'it'));
+}
+
+/** Slots sorted by start time. */
+const oreDel = (giorno) => [...(state.orario?.[giorno] || [])]
+  .sort((a, b) => (a.inizio < b.inizio ? -1 : a.inizio > b.inizio ? 1 : 0));
+
+function renderOrario() {
+  if (!state.orario) state.orario = orarioVuoto();
+  if (!state.giornoOrario) state.giornoOrario = giornoOrarioOggi();
+  const oggi = giornoOrarioOggi();
+  const adesso = new Date().toTimeString().slice(0, 5);
+  const totale = GIORNI_ORARIO.reduce((n, g) => n + (state.orario[g.id] || []).length, 0);
+
+  const pillola = (g) => `
+    <button data-giorno-orario="${g.id}" class="py-1.5 rounded-full text-[13px] font-semibold text-center transition
+      ${state.giornoOrario === g.id
+        ? 'bg-white text-ink ring-1 ring-slate-200 shadow-[0_1px_2px_rgba(22,26,43,.10),0_8px_16px_-8px_rgba(22,26,43,.55)]'
+        : 'text-ink-soft hover:text-ink'}">
+      ${g.breve}${g.id === oggi ? '<span class="block mx-auto mt-0.5 w-1 h-1 rounded-full bg-violet-500"></span>' : ''}</button>`;
+
+  const rigaOra = (g, o, i) => {
+    const inCorso = g.id === oggi && o.inizio <= adesso && adesso < o.fine;
+    return `
+      <li class="p-3.5 flex items-center gap-3 ${inCorso ? 'bg-violet-50/70' : ''}
+          lg:grid lg:grid-cols-[1fr_auto] lg:gap-x-2 lg:gap-y-0.5">
+        <div class="shrink-0 w-[4.5rem] leading-tight lg:w-auto lg:flex lg:items-baseline lg:gap-1.5">
+          <p class="text-sm font-extrabold tabular-nums lg:text-xs ${inCorso ? 'text-violet-700' : 'text-ink'}">${esc(o.inizio)}</p>
+          <p class="text-xs font-semibold tabular-nums text-ink-faint lg:before:content-['–'] lg:before:mr-1.5">${esc(o.fine)}</p>
+          ${inCorso ? '<span class="hidden lg:inline text-[10px] font-bold text-violet-700 bg-violet-100 rounded-full px-1.5">ora</span>' : ''}
+        </div>
+        <div class="w-px self-stretch lg:hidden ${inCorso ? 'bg-violet-300' : 'bg-slate-200'}"></div>
+        <p class="min-w-0 flex-1 font-bold text-[15px] truncate lg:text-sm lg:row-start-2">${esc(o.materia)}</p>
+        ${inCorso ? '<span class="shrink-0 text-[11px] font-bold text-violet-700 bg-violet-100 rounded-full px-2 py-0.5 lg:hidden">ora</span>' : ''}
+        <button type="button" data-modifica-ora="${g.id}:${i}" aria-label="Modifica"
+          class="shrink-0 w-9 h-9 grid place-items-center rounded-full text-ink-faint hover:bg-page hover:text-ink-soft transition
+            lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:w-8 lg:h-8
+            focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+          ${icon('pencil', 'w-[18px] h-[18px]')}
+        </button>
+      </li>`;
+  };
+
+  const colonna = (g) => {
+    const ore = oreDel(g.id);
+    return `
+      <div data-colonna="${g.id}" class="${state.giornoOrario === g.id ? '' : 'hidden'} lg:block">
+        <div class="hidden lg:flex items-baseline gap-2 mb-2 px-1">
+          <h3 class="font-extrabold text-[15px] ${g.id === oggi ? 'text-violet-700' : ''}">${g.nome}</h3>
+          <span class="ml-auto text-xs text-ink-faint">${ore.length ? plurale(ore.length, 'ora', 'ore') : ''}</span>
+        </div>
+        ${card(`
+          ${ore.length ? `<ul class="divide-y divide-slate-100">${ore.map((o, i) => rigaOra(g, o, i)).join('')}</ul>`
+            : vuoto('Nessuna ora inserita.')}
+          <button type="button" data-aggiungi-ora="${g.id}"
+            class="w-full flex items-center justify-center gap-2 py-3 border-t border-slate-100 text-sm font-semibold
+              text-violet-600 hover:bg-violet-50 rounded-b-3xl transition
+              focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+            ${icon('plus', 'w-4 h-4')} Aggiungi ora
+          </button>`)}
+      </div>`;
+  };
+
+  el('tab-orario').innerHTML = `
+    ${card(`<div class="p-4">
+        <div class="flex items-baseline gap-3">
+          <h2 class="text-[17px] font-extrabold tracking-tight">Orario</h2>
+          <p class="ml-auto text-[13px] text-ink-soft truncate">${totale ? plurale(totale, 'ora a settimana', 'ore a settimana') : 'da lunedì a venerdì'}</p>
+        </div>
+        <div class="mt-3 grid grid-cols-5 gap-1 bg-slate-100 rounded-full p-1 lg:hidden">
+          ${GIORNI_ORARIO.map(pillola).join('')}
+        </div>
+      </div>
+      ${state.statoRemoto ? '' : `<p class="px-4 pb-3 -mt-1 text-xs text-amber-700">
+        L'orario resta solo su questo dispositivo: il server non ha un database configurato.</p>`}`)}
+    <div class="mt-3 lg:grid lg:grid-cols-5 lg:gap-3 lg:items-start">
+      ${GIORNI_ORARIO.map(colonna).join('')}
+    </div>`;
+
+  const pannello = el('tab-orario');
+  for (const b of pannello.querySelectorAll('[data-giorno-orario]')) {
+    b.onclick = () => { state.giornoOrario = b.dataset.giornoOrario; render(); };
+  }
+  for (const b of pannello.querySelectorAll('[data-aggiungi-ora]')) {
+    b.onclick = () => apriOra(b.dataset.aggiungiOra, null);
+  }
+  for (const b of pannello.querySelectorAll('[data-modifica-ora]')) {
+    b.onclick = () => {
+      const [giorno, i] = b.dataset.modificaOra.split(':');
+      apriOra(giorno, Number(i));
+    };
+  }
+}
+
+/** Mirrors the timetable in localStorage and sends the whole week to the server. */
+function salvaOrario() {
+  try { localStorage.setItem(chiaveLocale() + ':orario', JSON.stringify(state.orario)); } catch { /* storage blocked */ }
+  render();
+  if (!state.statoRemoto) return;
+  api('/api/orario', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ orario: state.orario }),
+  }).catch((ex) => {
+    if (/non configurato/i.test(ex.message)) { state.statoRemoto = false; render(); }
+    else console.error('salvataggio orario fallito:', ex.message);
+  });
+}
+
+let oraAperta = null; // { giorno, indice } while the dialog is open, indice null for a new slot
+function apriOra(giorno, indice) {
+  const g = GIORNI_ORARIO.find((x) => x.id === giorno);
+  const ore = oreDel(giorno);
+  const o = indice == null ? null : ore[indice];
+  // a new slot starts where the last one ends, one hour long
+  const ultima = ore[ore.length - 1];
+  const inizio = o?.inizio || ultima?.fine || '08:00';
+  const fine = o?.fine || sommaOra(inizio, 60);
+  oraAperta = { giorno, indice: o ? state.orario[giorno].indexOf(o) : null };
+  el('ora-titolo').textContent = o ? 'Modifica ora' : 'Nuova ora';
+  el('ora-giorno').textContent = g?.nome || '';
+  el('ora-inizio').value = inizio;
+  el('ora-fine').value = fine;
+  el('ora-materia').value = o?.materia || '';
+  el('ora-errore').classList.add('hidden');
+  el('ora-elimina').classList.toggle('hidden', !o);
+  el('materie-list').innerHTML = materieNote().map((m) => `<option value="${esc(m)}"></option>`).join('');
+  el('ora-dialog').showModal();
+  el(o ? 'ora-materia' : 'ora-inizio').focus();
+}
+function chiudiOra() { el('ora-dialog').close(); oraAperta = null; }
+
+/** "08:00" + 60 minutes -> "09:00", capped at 23:59. */
+function sommaOra(hhmm, minuti) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const tot = Math.min(h * 60 + m + minuti, 23 * 60 + 59);
+  return `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`;
+}
+
+function confermaOra(e) {
+  e.preventDefault();
+  if (!oraAperta) return;
+  const inizio = el('ora-inizio').value;
+  const fine = el('ora-fine').value;
+  const materia = el('ora-materia').value.trim();
+  const errore = el('ora-errore');
+  const problema = !inizio || !fine ? 'Inserisci inizio e fine.'
+    : fine <= inizio ? 'La fine deve venire dopo l\'inizio.'
+      : !materia ? 'Scrivi la materia.' : '';
+  if (problema) {
+    errore.textContent = problema;
+    errore.classList.remove('hidden');
+    return;
+  }
+  const lista = state.orario[oraAperta.giorno] || (state.orario[oraAperta.giorno] = []);
+  const nuova = { inizio, fine, materia };
+  if (oraAperta.indice == null) lista.push(nuova);
+  else lista[oraAperta.indice] = nuova;
+  chiudiOra();
+  salvaOrario();
+}
+
+function eliminaOra() {
+  if (!oraAperta || oraAperta.indice == null) return;
+  state.orario[oraAperta.giorno].splice(oraAperta.indice, 1);
+  chiudiOra();
+  salvaOrario();
+}
 
 // --- grades
 
@@ -1043,6 +1246,14 @@ dialogoNota.addEventListener('click', (e) => {
   if (e.target === dialogoNota) chiudiNota();
 });
 dialogoNota.addEventListener('close', () => { notaAperta = null; });
+const dialogoOra = el('ora-dialog');
+el('ora-form').addEventListener('submit', confermaOra);
+el('ora-annulla').addEventListener('click', chiudiOra);
+el('ora-elimina').addEventListener('click', eliminaOra);
+dialogoOra.addEventListener('click', (e) => {
+  if (e.target === dialogoOra) chiudiOra();
+});
+dialogoOra.addEventListener('close', () => { oraAperta = null; });
 el('period-btn').addEventListener('click', () => (periodoAperto ? chiudiPeriodo() : apriPeriodo()));
 el('period-btn').addEventListener('keydown', tastieraPeriodo);
 el('period-menu').addEventListener('keydown', tastieraPeriodo);
@@ -1085,7 +1296,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 
 // initial tab from the query string (?tab=voti), handy for testing too
 const tabIniziale = new URLSearchParams(location.search).get('tab');
-if (['home', 'calendario', 'compiti', 'voti', 'media'].includes(tabIniziale)) state.tab = tabIniziale;
+if (['home', 'calendario', 'compiti', 'orario', 'voti', 'media'].includes(tabIniziale)) state.tab = tabIniziale;
 
 // is there a session already?
 api('/api/data').then((data) => { state.data = data; mostraApp(); }).catch(() => {});

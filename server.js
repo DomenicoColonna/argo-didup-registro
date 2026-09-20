@@ -142,6 +142,20 @@ const server = http.createServer(async (req, res) => {
       return send(res, 405, { error: 'Metodo non ammesso' });
     }
 
+    // weekly timetable, whole object in and out, see stato.js
+    if (url.pathname === '/api/orario') {
+      const session = sessions.get(sidOf(req));
+      if (!session) return send(res, 401, { error: 'Non autenticato' });
+      if (!stato.disponibile()) return send(res, 503, { error: 'Salvataggio non configurato' });
+      const pk = session.profilo.alunno.pk;
+      if (req.method === 'GET') return send(res, 200, { orario: await stato.leggiOrario(pk) });
+      if (req.method === 'PUT') {
+        const { orario } = await readBody(req);
+        return send(res, 200, { orario: await stato.salvaOrario(pk, orario) });
+      }
+      return send(res, 405, { error: 'Metodo non ammesso' });
+    }
+
     if (url.pathname === '/api/logout' && req.method === 'POST') {
       sessions.delete(sidOf(req));
       salvaSessioni();

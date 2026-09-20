@@ -132,6 +132,21 @@ exports.handler = async (event) => {
       return reply(405, { error: 'Metodo non ammesso' });
     }
 
+    // weekly timetable, whole object in and out, see stato.js
+    if (route === 'orario') {
+      const cookie = cookieOf(event);
+      const session = cookie && open(cookie);
+      if (!session) return reply(401, { error: 'Non autenticato' });
+      if (!stato.disponibile()) return reply(503, { error: 'Salvataggio non configurato' });
+      const pk = session.profilo.alunno.pk;
+      if (method === 'GET') return reply(200, { orario: await stato.leggiOrario(pk) });
+      if (method === 'PUT') {
+        const { orario } = readBody(event);
+        return reply(200, { orario: await stato.salvaOrario(pk, orario) });
+      }
+      return reply(405, { error: 'Metodo non ammesso' });
+    }
+
     if (route === 'logout' && method === 'POST') return reply(200, { ok: true }, setCookie('', 0));
 
     return reply(404, { error: 'Endpoint sconosciuto' });

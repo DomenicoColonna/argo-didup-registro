@@ -14,6 +14,15 @@ create table if not exists public.compiti (
 );
 alter table public.compiti enable row level security;
 
+-- ---------- timetable ----------
+-- One row per student, the whole week as JSON: { lun: [{inizio, fine, materia}], ... ven }.
+create table if not exists public.orario (
+  alunno     text        primary key,
+  dati       jsonb       not null default '{}'::jsonb,
+  aggiornato timestamptz not null default now()
+);
+alter table public.orario enable row level security;
+
 -- ---------- keepalive ----------
 -- A free project pauses after 7 days without activity. keepalive_ping() does a
 -- small write and is callable with the anon key, so both the Netlify scheduled

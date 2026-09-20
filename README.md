@@ -72,6 +72,19 @@ the scheduled Netlify function `netlify/functions/keepalive.js` (daily, see
 (daily, needs the `SUPABASE_URL` and `SUPABASE_ANON_KEY` repo secrets). The VPS
 server pings it too every three days.
 
+## Timetable
+
+The Orario tab is a weekly timetable, monday to friday, typed in by hand: for
+each day a list of "from HH:MM to HH:MM, subject" slots. Subjects known from
+Argo are offered as autocomplete. On the phone one day at a time (today by
+default, monday on weekends), on desktop the five days side by side. The slot
+running right now is highlighted.
+
+It travels as a whole through `/api/orario` (`GET` and `PUT`) and is stored
+by `stato.js` next to the homework state: the `orario` table on Supabase, one
+row per student with the week as JSON, or `dati/orario.json` on the VPS, with
+the same `localStorage` mirror and the same 503 fallback as the homework state.
+
 ## Deploying on Netlify
 
 `netlify.toml` publishes `public/` and routes `/api/*` to
