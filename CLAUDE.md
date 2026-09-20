@@ -7,7 +7,12 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 
 - `argo.js` API client (OAuth2 PKCE login, token refresh, `apiRequest`)
 - `server.js` HTTP server on port 3000, `/api/login`, `/api/data`, `/api/logout`,
-  static files from `public/`, sessions in `dati/sessioni.json`
+  `/api/compiti`, static files from `public/`, sessions in `dati/sessioni.json`
+- `stato.js` homework done flags and notes, Supabase (`SUPABASE_URL` and
+  `SUPABASE_SERVICE_KEY`) or `dati/compiti.json` on the VPS; the table and the
+  `keepalive_ping()` function are in `supabase/schema.sql`
+- `netlify/functions/keepalive.js` and `.github/workflows/keepalive.yml` ping
+  Supabase daily so the free project does not pause
 - `login-test.js` step by step login diagnostics
 - `public/app.js` all the UI logic, `public/index.html` markup and Tailwind config
 - `netlify/functions/api.js` the same API as `server.js` for Netlify, session in an
@@ -22,6 +27,8 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 - Averages are computed locally, see `calcolaMedie` in `public/app.js`. A grade
   counts unless `numMedia === 0` or `faMenoMedia === 'S'`.
 - The calendar only shows September to June of the current school year.
+- Homework has no id from Argo: `chiaveCompito` (due day, subject, text hash)
+  is the key of the saved state. Changing it orphans everything already saved.
 - Code comments are in English. UI text and variable names stay in Italian.
 - Commit and push only when asked.
 - `server.js` (VPS) and `netlify/functions/api.js` (Netlify) must keep the same

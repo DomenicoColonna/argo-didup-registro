@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { fullLogin, loadDashboard, refreshIfNeeded } = require('./argo');
+const stato = require('./stato');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -125,6 +126,22 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, publicPayload(session));
     }
 
+    // homework state (done flag, notes), see stato.js
+    if (url.pathname === '/api/compiti') {
+      const session = sessions.get(sidOf(req));
+      if (!session) return send(res, 401, { error: 'Non autenticato' });
+      if (!stato.disponibile()) return send(res, 503, { error: 'Salvataggio non configurato' });
+      const pk = session.profilo.alunno.pk;
+      if (req.method === 'GET') return send(res, 200, { stato: await stato.leggiStato(pk) });
+      if (req.method === 'PUT') {
+        const { chiave, ...patch } = await readBody(req);
+        if (!chiave || typeof chiave !== 'string' || chiave.length > 200)
+          return send(res, 400, { error: 'Chiave compito mancante' });
+        return send(res, 200, { chiave, valore: await stato.salvaStato(pk, chiave, patch) });
+      }
+      return send(res, 405, { error: 'Metodo non ammesso' });
+    }
+
     if (url.pathname === '/api/logout' && req.method === 'POST') {
       sessions.delete(sidOf(req));
       salvaSessioni();
@@ -150,4 +167,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 caricaSessioni();
+// the VPS is always on, so it can also keep the Supabase project awake (Netlify has its own scheduled function)
+setInterval(() => stato.keepAlive().catch((err) => console.error('keep alive fallito:', err.message)), 3 * 24 * 3600 * 1000);
 server.listen(PORT, () => console.log(`Registro pronto su http://localhost:${PORT} (${sessions.size} sessioni riprese)`));

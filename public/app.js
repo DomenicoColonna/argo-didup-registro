@@ -8,6 +8,8 @@ const state = {
   giornoSelezionato: isoDay(new Date()),
   compitiPassati: false,
   mediaTuttiVoti: false,
+  stato: {},          // homework key -> { fatto, note }, see caricaStato
+  statoRemoto: true,  // false when the server cannot store it (Netlify without Supabase)
 };
 
 // -------------------------------------------------------------------- icons
@@ -28,6 +30,7 @@ const ICON_PATHS = {
   check2: '<path d="M5 12.5 10 17.5 19 7"/>',
   arrowLeft: '<path d="M14.5 5.5 8 12l6.5 6.5"/>',
   arrowRight: '<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
+  pencil: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/>',
 };
 
 function icon(name, cls = 'w-5 h-5') {
@@ -95,17 +98,36 @@ function tonoVoto(v) {
   return { testo: 'text-rose-700', chip: 'bg-rose-50 text-rose-700', barra: 'bg-rose-500' };
 }
 
-/** Date chip in the "MAG 24 / ven" style. */
-function chipData(iso, evidenzia = false) {
+/**
+ * How far a day is from today: 'passato', 'oggi', 'vicino' (the next three
+ * days) or 'lontano'. Used to color the day chip in the homework list.
+ */
+function distanzaGiorno(iso, oggi = isoDay(new Date())) {
+  if (iso < oggi) return 'passato';
+  if (iso === oggi) return 'oggi';
+  const giorni = Math.round((parseDate(iso) - parseDate(oggi)) / 86400000);
+  return giorni <= 3 ? 'vicino' : 'lontano';
+}
+
+const TONI_CHIP = {
+  neutro:  { box: 'bg-page text-ink-soft', mese: 'text-ink-faint', giorno: 'text-ink', wd: 'text-ink-faint' },
+  oggi:    { box: 'bg-violet-600 text-white', mese: 'text-white/80', giorno: 'text-white', wd: 'text-white/80' },
+  passato: { box: 'bg-slate-200/70 text-ink-faint', mese: 'text-ink-faint', giorno: 'text-ink-faint', wd: 'text-ink-faint' },
+  vicino:  { box: 'bg-amber-100 text-amber-800', mese: 'text-amber-700/80', giorno: 'text-amber-900', wd: 'text-amber-700/80' },
+  lontano: { box: 'bg-sky-100 text-sky-800', mese: 'text-sky-700/80', giorno: 'text-sky-900', wd: 'text-sky-700/80' },
+};
+
+/** Date chip in the "MAG 24 / ven" style. `tono` is a key of TONI_CHIP, `true` means today. */
+function chipData(iso, tono = 'neutro') {
   const d = parseDate(iso);
   if (!d) return '';
+  const t = TONI_CHIP[tono === true ? 'oggi' : tono] || TONI_CHIP.neutro;
   const mese = d.toLocaleDateString('it-IT', { month: 'short' }).replace('.', '').toUpperCase();
   const wd = d.toLocaleDateString('it-IT', { weekday: 'short' }).replace('.', '');
-  return `<div class="shrink-0 w-14 rounded-2xl px-2 py-1.5 text-center leading-tight
-      ${evidenzia ? 'bg-violet-600 text-white' : 'bg-page text-ink-soft'}">
-      <div class="text-[10px] font-bold tracking-wide ${evidenzia ? 'text-white/80' : 'text-ink-faint'}">${mese}</div>
-      <div class="text-lg font-extrabold ${evidenzia ? 'text-white' : 'text-ink'}">${d.getDate()}</div>
-      <div class="text-[10px] font-semibold ${evidenzia ? 'text-white/80' : 'text-ink-faint'}">${wd}</div>
+  return `<div class="shrink-0 w-14 rounded-2xl px-2 py-1.5 text-center leading-tight ${t.box}">
+      <div class="text-[10px] font-bold tracking-wide ${t.mese}">${mese}</div>
+      <div class="text-lg font-extrabold ${t.giorno}">${d.getDate()}</div>
+      <div class="text-[10px] font-semibold ${t.wd}">${wd}</div>
     </div>`;
 }
 
@@ -165,17 +187,38 @@ function votiPeriodo() {
   return state.periodo === 'tutti' ? all : all.filter((v) => v.pkPeriodo === state.periodo);
 }
 
+/** Short djb2 hash, enough to tell two homework texts apart. */
+function hashBreve(testo) {
+  let h = 5381;
+  for (let i = 0; i < testo.length; i++) h = ((h << 5) + h + testo.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Argo gives homework no id, so the key is built from due day, subject and
+ * text: it stays the same across refreshes unless the teacher edits the text.
+ */
+const chiaveCompito = (giorno, materia, testo) =>
+  `${giorno}|${materia.slice(0, 40)}|${hashBreve(testo.trim())}`;
+
 function compiti() {
   const out = [];
   for (const lezione of attivi(dash().registro)) {
     for (const c of lezione.compiti || []) {
       if (!c.compito) continue;
+      const materia = lezione.materia || '—';
+      const giorno = dayOf(c.dataConsegna) || dayOf(lezione.datGiorno);
+      const chiave = chiaveCompito(giorno, materia, c.compito);
+      const mio = state.stato[chiave] || {};
       out.push({
+        chiave,
         testo: c.compito,
-        materia: lezione.materia || '—',
+        materia,
         docente: lezione.docente || '',
         assegnato: dayOf(lezione.datGiorno),
-        giorno: dayOf(c.dataConsegna) || dayOf(lezione.datGiorno),
+        giorno,
+        fatto: Boolean(mio.fatto),
+        note: mio.note || '',
       });
     }
   }
@@ -378,6 +421,7 @@ function mostraApp() {
   el('app-view').classList.remove('hidden');
   renderPeriodo();
   render();
+  caricaStato();
 }
 
 function render() {
@@ -435,10 +479,11 @@ function render() {
 function renderHome() {
   const m = calcolaMedie();
   const oggi = isoDay(new Date());
-  const prossimi = compiti().filter((c) => c.giorno >= oggi).slice(0, 3);
+  const daFare = compiti().filter((c) => c.giorno >= oggi && !c.fatto);
+  const prossimi = daFare.slice(0, 3);
   const ultimi = votiPeriodo().slice(0, 4);
   const tono = tonoVoto(m.generale);
-  const inScadenza = compiti().filter((c) => c.giorno >= oggi).length;
+  const inScadenza = daFare.length;
   const argo = dash().mediaGenerale;
 
   const scorciatoia = (tab, nome, valore, ic, colore) => `
@@ -491,7 +536,7 @@ function renderHome() {
     ${card(prossimi.length ? `<ul class="divide-y divide-slate-100">
       ${prossimi.map((c) => `
         <li class="p-4 flex gap-3.5 items-start">
-          ${chipData(c.giorno, c.giorno === oggi)}
+          ${chipData(c.giorno, distanzaGiorno(c.giorno, oggi))}
           <div class="min-w-0">
             <p class="font-bold text-[15px]">${esc(c.materia)}</p>
             <p class="text-sm text-ink-soft line-clamp-2">${esc(c.testo)}</p>
@@ -652,12 +697,34 @@ function renderCalendario() {
 
 // --- homework
 
+/** Round check button used as the "done" checkbox of a homework item. */
+const bottoneFatto = (c) => `
+  <button type="button" role="checkbox" aria-checked="${c.fatto}" data-fatto="${esc(c.chiave)}"
+    aria-label="${c.fatto ? 'Segna come da fare' : 'Segna come fatto'}"
+    class="w-9 h-9 grid place-items-center rounded-full border-2 transition
+      ${c.fatto
+        ? 'bg-emerald-500 border-emerald-500 text-white'
+        : 'border-slate-300 text-transparent hover:border-emerald-400 hover:text-emerald-400'}
+      focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">
+    ${icon('check2', 'w-5 h-5')}
+  </button>`;
+
+const bottoneNote = (c) => `
+  <button type="button" data-note="${esc(c.chiave)}"
+    aria-label="${c.note ? 'Modifica la nota' : 'Aggiungi una nota'}"
+    class="w-9 h-9 grid place-items-center rounded-full transition
+      ${c.note ? 'bg-violet-100 text-violet-700 hover:bg-violet-200' : 'text-ink-faint hover:bg-page hover:text-ink-soft'}
+      focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+    ${icon('pencil', 'w-[18px] h-[18px]')}
+  </button>`;
+
 function renderCompiti() {
   const oggi = isoDay(new Date());
   const tutti = compiti();
   const lista = state.compitiPassati ? tutti : tutti.filter((c) => c.giorno >= oggi);
   const perGiorno = new Map();
   for (const c of lista) perGiorno.set(c.giorno, [...(perGiorno.get(c.giorno) || []), c]);
+  const fatti = lista.filter((c) => c.fatto).length;
 
   const filtro = (valore, testo) => `
     <button data-passati="${valore}" class="px-4 py-1.5 rounded-full text-sm font-semibold transition
@@ -666,36 +733,122 @@ function renderCompiti() {
         : 'text-ink-soft hover:text-ink'}">
       ${testo}</button>`;
 
+  const riepilogo = lista.length
+    ? `${plurale(lista.length - fatti, 'da fare', 'da fare')} · ${plurale(fatti, 'fatto', 'fatti')}`
+    : '';
+
   el('tab-compiti').innerHTML = `
     ${card(`<div class="p-4 flex items-center gap-3">
-        <h2 class="text-[17px] font-extrabold tracking-tight mr-auto">Compiti</h2>
-        <div class="flex gap-1 bg-slate-100 rounded-full p-1">
+        <div class="mr-auto min-w-0">
+          <h2 class="text-[17px] font-extrabold tracking-tight">Compiti</h2>
+          ${riepilogo ? `<p class="text-[13px] text-ink-soft truncate">${riepilogo}</p>` : ''}
+        </div>
+        <div class="flex gap-1 bg-slate-100 rounded-full p-1 shrink-0">
           ${filtro('false', 'In arrivo')}${filtro('true', 'Tutti')}
         </div>
-      </div>`)}
+      </div>
+      ${state.statoRemoto ? '' : `<p class="px-4 pb-3 -mt-1 text-xs text-amber-700">
+        Fatti e note restano solo su questo dispositivo: il server non ha un database configurato.</p>`}`)}
     <div class="mt-3 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
       ${perGiorno.size === 0 ? card(vuoto('Nessun compito da fare.')) : ''}
       ${[...perGiorno.entries()].map(([giorno, items]) => card(`
         <ul class="divide-y divide-slate-100">
           ${items.map((c, i) => `
             <li class="p-4 flex gap-3.5 items-start">
-              ${i === 0 ? chipData(giorno, giorno === oggi) : '<div class="w-14 shrink-0"></div>'}
-              <div class="min-w-0">
-                <p class="font-bold text-[15px]">${esc(c.materia)}</p>
-                <p class="text-sm text-ink-soft whitespace-pre-wrap">${esc(c.testo)}</p>
+              ${i === 0 ? chipData(giorno, distanzaGiorno(giorno, oggi)) : '<div class="w-14 shrink-0"></div>'}
+              <div class="min-w-0 flex-1">
+                <p class="font-bold text-[15px] ${c.fatto ? 'line-through text-ink-faint' : ''}">${esc(c.materia)}</p>
+                <p class="text-sm whitespace-pre-wrap ${c.fatto ? 'line-through text-ink-faint' : 'text-ink-soft'}">${esc(c.testo)}</p>
+                ${c.note ? `
+                  <button type="button" data-note="${esc(c.chiave)}"
+                    class="mt-2 w-full text-left rounded-xl bg-violet-50 px-3 py-2 text-[13px] text-violet-900
+                      whitespace-pre-wrap hover:bg-violet-100 transition">${esc(c.note)}</button>` : ''}
                 <p class="text-xs text-ink-faint mt-1">
                   assegnato ${esc(parseDate(c.assegnato)?.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' }) || '—')}
                   ${c.docente ? '· ' + esc(c.docente) : ''}
                 </p>
               </div>
+              <div class="shrink-0 flex flex-col items-center gap-1 -mr-1">
+                ${bottoneFatto(c)}
+                ${bottoneNote(c)}
+              </div>
             </li>`).join('')}
         </ul>`)).join('')}
     </div>`;
 
-  for (const b of el('tab-compiti').querySelectorAll('[data-passati]')) {
+  const pannello = el('tab-compiti');
+  for (const b of pannello.querySelectorAll('[data-passati]')) {
     b.onclick = () => { state.compitiPassati = b.dataset.passati === 'true'; render(); };
   }
+  for (const b of pannello.querySelectorAll('[data-fatto]')) {
+    b.onclick = () => {
+      const c = tutti.find((x) => x.chiave === b.dataset.fatto);
+      if (c) salvaStatoCompito(c.chiave, { fatto: !c.fatto, note: c.note });
+    };
+  }
+  for (const b of pannello.querySelectorAll('[data-note]')) {
+    b.onclick = () => {
+      const c = tutti.find((x) => x.chiave === b.dataset.note);
+      if (c) apriNota(c);
+    };
+  }
 }
+
+// ------------------------------------------------- homework state (done, notes)
+
+const chiaveLocale = () => `compiti-stato:${state.data?.profilo?.alunno?.pk || ''}`;
+
+/**
+ * localStorage first so the list is right on the first paint, then the server,
+ * which wins when both have something. Without a server store (503) the state
+ * simply stays in this browser.
+ */
+async function caricaStato() {
+  try {
+    state.stato = JSON.parse(localStorage.getItem(chiaveLocale())) || {};
+  } catch {
+    state.stato = {};
+  }
+  try {
+    const { stato } = await api('/api/compiti');
+    state.stato = { ...state.stato, ...stato };
+    state.statoRemoto = true;
+    localStorage.setItem(chiaveLocale(), JSON.stringify(state.stato));
+  } catch (ex) {
+    if (/non configurato/i.test(ex.message)) state.statoRemoto = false;
+  }
+  if (['home', 'compiti', 'calendario'].includes(state.tab)) render();
+}
+
+/** Optimistic: the UI updates right away, the server call follows. */
+function salvaStatoCompito(chiave, valori) {
+  const valore = { fatto: Boolean(valori.fatto), note: String(valori.note || '') };
+  if (!valore.fatto && !valore.note) delete state.stato[chiave];
+  else state.stato[chiave] = valore;
+  try { localStorage.setItem(chiaveLocale(), JSON.stringify(state.stato)); } catch { /* storage full or blocked */ }
+  render();
+  if (!state.statoRemoto) return;
+  api('/api/compiti', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chiave, ...valore }),
+  }).catch((ex) => {
+    if (/non configurato/i.test(ex.message)) { state.statoRemoto = false; render(); }
+    else console.error('salvataggio compito fallito:', ex.message);
+  });
+}
+
+let notaAperta = null;
+function apriNota(c) {
+  notaAperta = c;
+  el('nota-materia').textContent = c.materia;
+  el('nota-testo').textContent = c.testo;
+  el('nota-input').value = c.note;
+  el('nota-elimina').classList.toggle('hidden', !c.note);
+  el('nota-dialog').showModal();
+  el('nota-input').focus();
+}
+function chiudiNota() { el('nota-dialog').close(); notaAperta = null; }
 
 // --- grades
 
@@ -840,6 +993,20 @@ el('logout-conferma').addEventListener('click', async (e) => {
 dialogoUscita.addEventListener('click', (e) => {
   if (e.target === dialogoUscita) dialogoUscita.close();
 });
+const dialogoNota = el('nota-dialog');
+el('nota-annulla').addEventListener('click', chiudiNota);
+el('nota-salva').addEventListener('click', () => {
+  if (notaAperta) salvaStatoCompito(notaAperta.chiave, { fatto: notaAperta.fatto, note: el('nota-input').value.trim() });
+  chiudiNota();
+});
+el('nota-elimina').addEventListener('click', () => {
+  if (notaAperta) salvaStatoCompito(notaAperta.chiave, { fatto: notaAperta.fatto, note: '' });
+  chiudiNota();
+});
+dialogoNota.addEventListener('click', (e) => {
+  if (e.target === dialogoNota) chiudiNota();
+});
+dialogoNota.addEventListener('close', () => { notaAperta = null; });
 el('period-btn').addEventListener('click', () => (periodoAperto ? chiudiPeriodo() : apriPeriodo()));
 el('period-btn').addEventListener('keydown', tastieraPeriodo);
 el('period-menu').addEventListener('keydown', tastieraPeriodo);

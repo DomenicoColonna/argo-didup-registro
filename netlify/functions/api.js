@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Same three endpoints as server.js, as a Netlify function.
+ * Same endpoints as server.js, as a Netlify function.
  * Functions are stateless, so the session (Argo tokens, login data, a slice of
  * the profile) travels inside an encrypted cookie instead of dati/sessioni.json.
  * The dashboard is downloaded again on every /api/data call.
@@ -8,6 +8,7 @@
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { fullLogin, loadDashboard, refreshIfNeeded } = require('../../argo');
+const stato = require('../../stato');
 
 const COOKIE = 'sid';
 const MAX_AGE = 180 * 24 * 3600; // seconds, same as server.js
@@ -112,6 +113,23 @@ exports.handler = async (event) => {
       // a fresh token means a fresh cookie, otherwise the old one keeps working
       const renewed = session.token.access_token !== before ? setCookie(seal(session)) : undefined;
       return reply(200, publicPayload(session), renewed);
+    }
+
+    // homework state (done flag, notes), see stato.js
+    if (route === 'compiti') {
+      const cookie = cookieOf(event);
+      const session = cookie && open(cookie);
+      if (!session) return reply(401, { error: 'Non autenticato' });
+      if (!stato.disponibile()) return reply(503, { error: 'Salvataggio non configurato' });
+      const pk = session.profilo.alunno.pk;
+      if (method === 'GET') return reply(200, { stato: await stato.leggiStato(pk) });
+      if (method === 'PUT') {
+        const { chiave, ...patch } = readBody(event);
+        if (!chiave || typeof chiave !== 'string' || chiave.length > 200)
+          return reply(400, { error: 'Chiave compito mancante' });
+        return reply(200, { chiave, valore: await stato.salvaStato(pk, chiave, patch) });
+      }
+      return reply(405, { error: 'Metodo non ammesso' });
     }
 
     if (route === 'logout' && method === 'POST') return reply(200, { ok: true }, setCookie('', 0));

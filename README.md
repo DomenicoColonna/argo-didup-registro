@@ -42,21 +42,53 @@ Tokens, profile and downloaded data go to `dati/sessioni.json` (mode 600,
 ignored by git) so they survive restarts. The cookie lasts 180 days and the Argo
 token renews itself with the refresh token.
 
+## Homework done flags and notes
+
+In the Compiti tab every homework item has a check button (done) and a pencil
+(a personal note). The day chip is grey for past days, violet for today, amber
+for the next three days and blue after that. Done items are skipped by the
+"da fare" counters on the home page.
+
+Argo gives homework no id, so each item is keyed by due day, subject and a hash
+of the text (`chiaveCompito` in `public/app.js`). If the teacher edits the text
+the flag is lost, nothing worse.
+
+The state goes through `/api/compiti` (`GET` returns everything, `PUT` saves
+one item) and is stored by `stato.js`:
+
+- with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set, in a Supabase table
+  (`supabase/schema.sql`, run it once in the SQL editor);
+- otherwise on the VPS in `dati/compiti.json`;
+- on Netlify without Supabase the endpoint answers 503 and the browser keeps
+  the state in `localStorage` only, with a small warning in the tab.
+
+The browser always mirrors the state in `localStorage`, so the list is right on
+the first paint and clicks feel instant.
+
+A free Supabase project pauses after seven days without activity. Two things
+keep it awake, both calling the `keepalive_ping()` function from the schema:
+the scheduled Netlify function `netlify/functions/keepalive.js` (daily, see
+`netlify.toml`) and the GitHub workflow `.github/workflows/keepalive.yml`
+(daily, needs the `SUPABASE_URL` and `SUPABASE_ANON_KEY` repo secrets). The VPS
+server pings it too every three days.
+
 ## Deploying on Netlify
 
 `netlify.toml` publishes `public/` and routes `/api/*` to
-`netlify/functions/api.js`, which exposes the same three endpoints as
+`netlify/functions/api.js`, which exposes the same endpoints as
 `server.js`. Functions are stateless, so there is no `dati/sessioni.json`
 there. The session (Argo tokens, login data and a slice of the profile) lives in
 an encrypted cookie and the dashboard is downloaded again on every request.
 
-One environment variable is required in the Netlify site settings:
+Environment variables in the Netlify site settings:
 
 ```
-SESSION_SECRET=<a long random string, e.g. openssl rand -hex 32>
+SESSION_SECRET=<a long random string, e.g. openssl rand -hex 32>   # required
+SUPABASE_URL=https://<project>.supabase.co                          # homework state
+SUPABASE_SERVICE_KEY=<service role key>                             # homework state
 ```
 
-Change it and every phone has to log in again. Since Netlify serves over HTTPS
+Change `SESSION_SECRET` and every phone has to log in again. Since Netlify serves over HTTPS
 the PWA can be installed from there.
 
 ## Installing it on a phone (PWA)

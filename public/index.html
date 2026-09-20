@@ -204,6 +204,33 @@
   </div>
 </dialog>
 
-<script src="/app.js?v=2"></script>
+<dialog id="nota-dialog"
+  class="w-[min(24rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
+         backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
+  <div class="p-6">
+    <div class="w-11 h-11 rounded-2xl bg-violet-50 text-violet-600 grid place-items-center" data-icon="pencil"></div>
+    <h2 id="nota-materia" class="text-lg font-extrabold tracking-tight mt-3"></h2>
+    <p id="nota-testo" class="text-sm text-ink-soft mt-1 line-clamp-3 whitespace-pre-wrap"></p>
+    <label class="block mt-4">
+      <span class="text-xs font-semibold text-ink-soft">La tua nota</span>
+      <textarea id="nota-input" rows="4" maxlength="2000" placeholder="Pagine, esercizi, cose da ricordare…"
+        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px] resize-y
+               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"></textarea>
+    </label>
+    <div class="flex gap-2 mt-5">
+      <button id="nota-elimina" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
+        hover:bg-rose-50 transition focus-visible:outline focus-visible:outline-2
+        focus-visible:outline-offset-2 focus-visible:outline-rose-500">Elimina</button>
+      <button id="nota-annulla" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
+        hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
+        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
+      <button id="nota-salva" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
+        hover:bg-violet-700 transition focus-visible:outline focus-visible:outline-2
+        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Salva</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="/app.js?v=3"></script>
 </body>
 </html>
