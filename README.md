@@ -45,9 +45,11 @@ token renews itself with the refresh token.
 ## Homework done flags and notes
 
 In the Compiti tab every homework item has a check button (done) and a pencil
-(a personal note). The day chip is grey for past days, violet for today, amber
-for the next three days and blue after that. Done items are skipped by the
-"da fare" counters on the home page.
+(a personal note), and four filters: In arrivo, Tutti, Da fare, Fatti. The day
+chip is grey for past days, violet for today, amber for the next three days and
+blue after that. Done items get a green row and are skipped by the "da fare"
+counters on the home page. The calendar shows the same buttons in the day panel
+and turns the homework dot green once everything of that day is done.
 
 Argo gives homework no id, so each item is keyed by due day, subject and a hash
 of the text (`chiaveCompito` in `public/app.js`). If the teacher edits the text
@@ -83,7 +85,13 @@ running right now is highlighted.
 The day opens by itself: today between 06:00 and 15:00, the next school day
 outside those hours (so after 15:00 you already see tomorrow, and on weekends
 monday). A horizontal swipe moves between days. Leaving the tab forgets the day
-you swiped to.
+you swiped to. The same gesture moves between filters in Compiti and between
+months in Calendario.
+
+Under a subject, when homework of that subject is due on the next date falling
+on that weekday, the beginning of its text shows up and leads to the Compiti
+tab. Argo and the hand typed names rarely match exactly, so each homework goes
+to the closest subject taught that day (`puntiMateria` in `public/app.js`).
 
 It travels as a whole through `/api/orario` (`GET` and `PUT`) and is stored
 by `stato.js` next to the homework state: the `orario` table on Supabase, one

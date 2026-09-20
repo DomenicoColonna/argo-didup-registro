@@ -654,8 +654,8 @@ function renderCalendario() {
     ['Compiti', eventi.compiti.get(sel), (c) => `
       <div class="flex gap-3 items-start rounded-2xl -mx-2 px-2 py-1.5 transition-colors ${c.fatto ? 'bg-emerald-50/80' : ''}">
         <div class="min-w-0 flex-1">
-          <p class="font-bold text-[15px] ${c.fatto ? 'line-through text-ink-faint' : ''}">${esc(c.materia)}</p>
-          <p class="text-sm whitespace-pre-wrap ${c.fatto ? 'line-through text-ink-faint' : 'text-ink-soft'}">${esc(c.testo)}</p>
+          <p class="font-bold text-[15px]">${esc(c.materia)}</p>
+          <p class="text-sm whitespace-pre-wrap text-ink-soft">${esc(c.testo)}</p>
           ${c.note ? `
             <button type="button" data-note="${esc(c.chiave)}"
               class="mt-2 w-full text-left rounded-xl bg-violet-50 px-3 py-2 text-[13px] text-violet-900
@@ -675,7 +675,7 @@ function renderCalendario() {
     <div class="lg:grid lg:grid-cols-[1fr_21rem] lg:gap-6 lg:items-start">
     <div>
     ${card(`
-      <div class="p-4">
+      <div id="calendario-mese" class="p-4 ${versoClasse(state.versoMese)}">
         <div class="flex items-center gap-2 mb-3">
           <h2 class="text-[17px] font-extrabold tracking-tight capitalize mr-auto">
             ${mese.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
@@ -713,8 +713,10 @@ function renderCalendario() {
     </div>
     </div>`;
 
-  el('mese-prev').onclick = () => { state.mese = new Date(mese.getFullYear(), mese.getMonth() - 1, 1); render(); };
-  el('mese-next').onclick = () => { state.mese = new Date(mese.getFullYear(), mese.getMonth() + 1, 1); render(); };
+  state.versoMese = null; // the animation runs once, not on every later render
+  el('mese-prev').onclick = () => cambiaMese(-1);
+  el('mese-next').onclick = () => cambiaMese(1);
+  scorrimento(el('calendario-mese'), cambiaMese);
   el('mese-oggi').onclick = () => {
     state.mese = meseNeiLimiti(startOfMonth(new Date()));
     state.giornoSelezionato = isoDay(new Date());
@@ -724,6 +726,15 @@ function renderCalendario() {
     b.onclick = () => { state.giornoSelezionato = b.dataset.giorno; render(); };
   }
   collegaAzioniCompiti(el('tab-calendario'), tuttiCompiti);
+}
+
+/** Moves `passo` months, inside the september to june range. */
+function cambiaMese(passo) {
+  const prossimo = new Date(state.mese.getFullYear(), state.mese.getMonth() + passo, 1);
+  if (meseNeiLimiti(prossimo).getTime() !== prossimo.getTime()) return;
+  state.mese = prossimo;
+  state.versoMese = passo > 0 ? 'avanti' : 'indietro';
+  render();
 }
 
 // --- homework
@@ -758,6 +769,7 @@ function renderCompiti() {
     dafare: { nome: 'Da fare', tiene: (c) => !c.fatto, vuoto: 'Niente da fare, tutto fatto.' },
     fatti: { nome: 'Fatti', tiene: (c) => c.fatto, vuoto: 'Ancora nessun compito segnato come fatto.' },
   };
+  const idFiltri = Object.keys(FILTRI);
   const attivo = FILTRI[state.filtroCompiti] || FILTRI.arrivo;
   const lista = tutti.filter(attivo.tiene);
   const perGiorno = new Map();
@@ -787,7 +799,8 @@ function renderCompiti() {
       </div>
       ${state.statoRemoto ? '' : `<p class="px-4 pb-3 -mt-1 text-xs text-amber-700">
         Fatti e note restano solo su questo dispositivo: il server non ha un database configurato.</p>`}`)}
-    <div class="mt-3 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
+    <div id="compiti-lista" class="mt-3 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start
+        ${versoClasse(state.versoCompiti)}">
       ${perGiorno.size === 0 ? card(vuoto(attivo.vuoto)) : ''}
       ${[...perGiorno.entries()].map(([giorno, items]) => card(`
         <ul class="divide-y divide-slate-100">
@@ -796,8 +809,8 @@ function renderCompiti() {
                 ${c.fatto ? 'bg-emerald-50/80' : ''}">
               ${i === 0 ? chipData(giorno, distanzaGiorno(giorno, oggi)) : '<div class="w-14 shrink-0"></div>'}
               <div class="min-w-0 flex-1">
-                <p class="font-bold text-[15px] ${c.fatto ? 'line-through text-ink-faint' : ''}">${esc(c.materia)}</p>
-                <p class="text-sm whitespace-pre-wrap ${c.fatto ? 'line-through text-ink-faint' : 'text-ink-soft'}">${esc(c.testo)}</p>
+                <p class="font-bold text-[15px]">${esc(c.materia)}</p>
+                <p class="text-sm whitespace-pre-wrap text-ink-soft">${esc(c.testo)}</p>
                 ${c.note ? `
                   <button type="button" data-note="${esc(c.chiave)}"
                     class="mt-2 w-full text-left rounded-xl bg-violet-50 px-3 py-2 text-[13px] text-violet-900
@@ -815,11 +828,24 @@ function renderCompiti() {
         </ul>`)).join('')}
     </div>`;
 
+  state.versoCompiti = null; // the animation runs once, not on every later render
   const pannello = el('tab-compiti');
   for (const b of pannello.querySelectorAll('[data-filtro]')) {
-    b.onclick = () => { state.filtroCompiti = b.dataset.filtro; render(); };
+    b.onclick = () => cambiaFiltroCompiti(idFiltri.indexOf(b.dataset.filtro) - idFiltri.indexOf(state.filtroCompiti));
   }
   collegaAzioniCompiti(pannello, tutti);
+  scorrimento(el('compiti-lista'), cambiaFiltroCompiti);
+}
+
+/** Moves `passo` filters, stopping at the first and the last one. */
+function cambiaFiltroCompiti(passo) {
+  const ids = ['arrivo', 'tutti', 'dafare', 'fatti'];
+  const i = ids.indexOf(state.filtroCompiti);
+  const prossimo = ids[Math.min(Math.max(i + passo, 0), ids.length - 1)];
+  if (!prossimo || prossimo === state.filtroCompiti) return;
+  state.filtroCompiti = prossimo;
+  state.versoCompiti = passo > 0 ? 'avanti' : 'indietro';
+  render();
 }
 
 /** Wires the done and note buttons of every homework row inside `pannello`. */
@@ -946,6 +972,61 @@ function materieNote() {
   return [...set].filter((m) => m && m !== '—').sort((a, b) => a.localeCompare(b, 'it'));
 }
 
+/**
+ * Argo and the hand typed timetable spell subjects differently ("TPS INFORM."
+ * against "TPS"), so the match is loose: same text once accents, brackets and
+ * punctuation are gone, or same first word.
+ */
+function normalizzaMateria(nome) {
+  return String(nome || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** How close two subject names are, 0 when they have nothing in common. */
+function puntiMateria(a, b) {
+  const x = normalizzaMateria(a);
+  const y = normalizzaMateria(b);
+  if (!x || !y) return 0;
+  if (x === y) return 100;
+  const tx = x.split(' ');
+  const ty = y.split(' ');
+  const comuni = tx.filter((t) => t.length >= 4 && ty.includes(t)).length;
+  return (tx[0] === ty[0] ? 10 : 0) + comuni;
+}
+
+/**
+ * Groups the homework of one day under the subjects taught that day, each one
+ * going to the closest name. Picking the best match instead of every match
+ * keeps "Matematica" away from "Complementi Matematica".
+ */
+function compitiPerMateria(daFare, materie) {
+  const out = new Map();
+  for (const c of daFare) {
+    let scelta = null;
+    let punti = 0;
+    for (const m of materie) {
+      const p = puntiMateria(c.materia, m);
+      if (p > punti) { punti = p; scelta = m; }
+    }
+    if (scelta) out.set(scelta, [...(out.get(scelta) || []), c]);
+  }
+  return out;
+}
+
+/** The nearest date falling on that weekday, today included. */
+function dataDelGiorno(id) {
+  const i = GIORNI_ORARIO.findIndex((g) => g.id === id);
+  if (i < 0) return null;
+  const oggi = new Date();
+  const passi = (i - ((oggi.getDay() + 6) % 7) + 7) % 7;
+  return isoDay(new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate() + passi));
+}
+
 /** Slots sorted by start time. */
 const oreDel = (giorno) => [...(state.orario?.[giorno] || [])]
   .sort((a, b) => (a.inizio < b.inizio ? -1 : a.inizio > b.inizio ? 1 : 0));
@@ -956,6 +1037,7 @@ function renderOrario() {
   const oggi = giornoOrarioOggi();
   const adesso = new Date().toTimeString().slice(0, 5);
   const totale = GIORNI_ORARIO.reduce((n, g) => n + (state.orario[g.id] || []).length, 0);
+  const tuttiCompiti = compiti();
 
   const pillola = (g) => `
     <button data-giorno-orario="${g.id}" class="py-1.5 rounded-full text-[13px] font-semibold text-center transition
@@ -964,8 +1046,9 @@ function renderOrario() {
         : 'text-ink-soft hover:text-ink'}">
       ${g.breve}${g.id === oggi ? '<span class="block mx-auto mt-0.5 w-1 h-1 rounded-full bg-violet-500"></span>' : ''}</button>`;
 
-  const rigaOra = (g, o, i) => {
+  const rigaOra = (g, o, i, perMateria) => {
     const inCorso = g.id === oggi && o.inizio <= adesso && adesso < o.fine;
+    const suoi = perMateria.get(o.materia) || [];
     return `
       <li class="p-3.5 flex items-center gap-3 ${inCorso ? 'bg-violet-50/70' : ''}
           lg:grid lg:grid-cols-[1fr_auto] lg:gap-x-2 lg:gap-y-0.5">
@@ -975,7 +1058,18 @@ function renderOrario() {
           ${inCorso ? '<span class="hidden lg:inline text-[10px] font-bold text-violet-700 bg-violet-100 rounded-full px-1.5">ora</span>' : ''}
         </div>
         <div class="w-px self-stretch lg:hidden ${inCorso ? 'bg-violet-300' : 'bg-slate-200'}"></div>
-        <p class="min-w-0 flex-1 font-bold text-[15px] truncate lg:text-sm lg:row-start-2">${esc(o.materia)}</p>
+        <div class="min-w-0 flex-1 lg:row-start-2">
+          <p class="font-bold text-[15px] truncate lg:text-sm">${esc(o.materia)}</p>
+          ${suoi.length ? `
+            <button type="button" data-vai-compiti
+              class="mt-0.5 w-full flex items-center gap-1.5 text-left text-[12px] text-amber-700
+                hover:text-amber-800 transition focus-visible:outline focus-visible:outline-2
+                focus-visible:outline-offset-2 focus-visible:outline-amber-600">
+              ${icon('check', 'w-3.5 h-3.5 shrink-0')}
+              <span class="min-w-0 flex-1 truncate">${esc(suoi[0].testo)}</span>
+              ${suoi.length > 1 ? `<span class="shrink-0 font-bold">+${suoi.length - 1}</span>` : ''}
+            </button>` : ''}
+        </div>
         ${inCorso ? '<span class="shrink-0 text-[11px] font-bold text-violet-700 bg-violet-100 rounded-full px-2 py-0.5 lg:hidden">ora</span>' : ''}
         <button type="button" data-modifica-ora="${g.id}:${i}" aria-label="Modifica"
           class="shrink-0 w-9 h-9 grid place-items-center rounded-full text-ink-faint hover:bg-page hover:text-ink-soft transition
@@ -988,6 +1082,10 @@ function renderOrario() {
 
   const colonna = (g) => {
     const ore = oreDel(g.id);
+    // homework due on the next date falling on this weekday, still to be done
+    const data = dataDelGiorno(g.id);
+    const daFare = tuttiCompiti.filter((c) => c.giorno === data && !c.fatto);
+    const perMateria = compitiPerMateria(daFare, [...new Set(ore.map((o) => o.materia))]);
     return `
       <div data-colonna="${g.id}" class="${state.giornoOrario === g.id
         ? (state.versoOrario ? `scorri-${state.versoOrario}` : '') : 'hidden'} lg:block">
@@ -996,7 +1094,7 @@ function renderOrario() {
           <span class="ml-auto text-xs text-ink-faint">${ore.length ? plurale(ore.length, 'ora', 'ore') : ''}</span>
         </div>
         ${card(`
-          ${ore.length ? `<ul class="divide-y divide-slate-100">${ore.map((o, i) => rigaOra(g, o, i)).join('')}</ul>`
+          ${ore.length ? `<ul class="divide-y divide-slate-100">${ore.map((o, i) => rigaOra(g, o, i, perMateria)).join('')}</ul>`
             : vuoto('Nessuna ora inserita.')}
           <button type="button" data-aggiungi-ora="${g.id}"
             class="w-full flex items-center justify-center gap-2 py-3 border-t border-slate-100 text-sm font-semibold
@@ -1040,7 +1138,15 @@ function renderOrario() {
       apriOra(giorno, Number(i));
     };
   }
-  scorrimentoGiorni(el('orario-giorni'));
+  scorrimento(el('orario-giorni'), cambiaGiornoOrario);
+  for (const b of pannello.querySelectorAll('[data-vai-compiti]')) {
+    b.onclick = () => {
+      state.filtroCompiti = 'dafare';
+      state.tab = 'compiti';
+      window.scrollTo({ top: 0 });
+      render();
+    };
+  }
 }
 
 /** Moves `passo` days, stopping at monday and friday. */
@@ -1054,10 +1160,11 @@ function cambiaGiornoOrario(passo) {
 }
 
 /**
- * Horizontal swipe changes day (phone only, on desktop every day is visible).
- * A gesture counts when it is clearly sideways, so the page keeps scrolling.
+ * Horizontal swipe on `box` calls `vai(1)` when dragging left and `vai(-1)`
+ * when dragging right. Only clearly sideways gestures count, so the page keeps
+ * scrolling normally. Desktop shows everything at once and ignores this.
  */
-function scorrimentoGiorni(box) {
+function scorrimento(box, vai) {
   if (!box) return;
   let x0 = 0;
   let y0 = 0;
@@ -1074,9 +1181,12 @@ function scorrimentoGiorni(box) {
     const dx = e.changedTouches[0].clientX - x0;
     const dy = e.changedTouches[0].clientY - y0;
     if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
-    cambiaGiornoOrario(dx < 0 ? 1 : -1);
+    vai(dx < 0 ? 1 : -1);
   }, { passive: true });
 }
+
+/** Animation class for the element that has just been swiped into view. */
+const versoClasse = (verso) => (verso ? `scorri-${verso}` : '');
 
 /** Mirrors the timetable in localStorage and sends the whole week to the server. */
 function salvaOrario() {
