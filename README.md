@@ -29,6 +29,12 @@ message it returned.
 `auth.portaleargo.it` (same thing the Android and iOS apps do) and then calls
 `https://www.portaleargo.it/appfamiglia/api/rest/*`.
 
+Every call carries an `argo-client-version` header and Argo refuses anything
+older than the current store release with "E' necessario scaricare l'ultima
+versione presente negli store". When that message shows up at login, raise
+`CLIENT_VERSION` in `argo.js` (or set `ARGO_VERSION` in the environment) until
+the call goes through: only the minimum matters, the major must stay at 1.
+
 `server.js` is a small proxy. The Argo API sends no CORS headers, so the browser
 cannot call it directly. The server keeps sessions and serves `public/`.
 

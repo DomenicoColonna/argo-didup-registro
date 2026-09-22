@@ -8,7 +8,9 @@ const crypto = require('node:crypto');
 const CLIENT_ID = '72fd6dea-d0ab-4bb9-8eaa-3ac24c84886c';
 const REDIRECT_URI = 'it.argosoft.didup.famiglia.new://login-callback';
 const SCOPES = 'openid offline profile user.roles argo';
-const CLIENT_VERSION = process.env.ARGO_VERSION || '1.27.0';
+// Argo refuses anything older than the current store release with "scarica
+// l'ultima versione". Bump this when login starts failing with that message.
+const CLIENT_VERSION = process.env.ARGO_VERSION || '1.30.2';
 const API_BASE = 'https://www.portaleargo.it/appfamiglia/api/rest';
 
 const ALPHANUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -167,6 +169,7 @@ async function apiRequest(session, endpoint, body) {
     body: body != null ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
+  if (res.status === 401) throw new Error('Sessione scaduta, rifai il login');
   let json;
   try {
     json = JSON.parse(text);
@@ -174,6 +177,10 @@ async function apiRequest(session, endpoint, body) {
     throw new Error(`Risposta non valida da /${endpoint} (HTTP ${res.status}): ${text.slice(0, 120)}`);
   }
   if (json.success === false) throw new Error(json.msg || `Errore su /${endpoint}`);
+  // Some refusals (an outdated argo-client-version above all) come back as a
+  // bare message with no data at all, and no success flag to go with it.
+  if (json.data === undefined && json.msg) throw new Error(json.msg);
+  if (json.data === undefined) throw new Error(`Risposta senza dati da /${endpoint} (HTTP ${res.status})`);
   return json;
 }
 
@@ -205,7 +212,7 @@ async function refreshIfNeeded(session) {
     }),
   });
   const data = await res.json();
-  if (data.error) throw new Error('Sessione scaduta, rifai il login');
+  if (data.error || !data.expires_in) throw new Error(data.msg || 'Sessione scaduta, rifai il login');
   const expireDate = new Date(res.headers.get('date') || now);
   expireDate.setSeconds(expireDate.getSeconds() + data.expires_in);
   session.token = { ...session.token, ...data, expireDate };
@@ -217,7 +224,9 @@ async function loadDashboard(session) {
     dataultimoaggiornamento: formatDate(session.profilo.anno.dataInizio),
     opzioni: JSON.stringify(opzioni),
   });
-  session.dashboard = dashboard.data.dati[0];
+  const dati = dashboard.data.dati;
+  if (!Array.isArray(dati) || !dati[0]) throw new Error('Dashboard vuota, riprova più tardi');
+  session.dashboard = dati[0];
   session.aggiornato = new Date().toISOString();
   return session.dashboard;
 }
@@ -233,6 +242,7 @@ async function fullLogin(credentials, onStep = () => {}) {
     'lista-x-auth-token': '[]',
     clientID: randomString(163),
   });
+  if (!Array.isArray(login.data) || !login.data[0]) throw new Error('Login senza dati, riprova');
   session.login = login.data[0];
   onStep('login', { codMin: session.login.codMin, username: session.login.username });
 
