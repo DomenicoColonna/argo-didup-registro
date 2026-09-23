@@ -10,13 +10,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { fullLogin, loadDashboard, refreshIfNeeded } = require('./argo');
-const stato = require('./stato');
+const store = require('./store');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const SESSION_FILE = path.join(__dirname, 'dati', 'sessioni.json');
-const DURATA_SESSIONE = 180 * 24 * 3600 * 1000; // 180 days without use, then you log in again
-const DATI_FRESCHI_PER = 10 * 60 * 1000;         // older than 10 minutes and the data gets fetched again
+const SESSION_FILE = path.join(__dirname, 'data', 'sessions.json');
+const SESSION_TTL = 180 * 24 * 3600 * 1000; // 180 days without use, then you log in again
+const DATA_FRESH_FOR = 10 * 60 * 1000;      // older than 10 minutes and the data gets fetched again
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
@@ -25,36 +25,36 @@ const MIME = {
 const sessions = new Map();
 
 // ---------------------------------------------------- sessions persisted on disk
-// Tokens and Argo data (never the password) go to dati/sessioni.json, so a server
+// Tokens and Argo data (never the password) go to data/sessions.json, so a server
 // restart does not log anyone out. Only the owner can read the file.
 
-function caricaSessioni() {
+function loadSessions() {
   try {
-    const salvate = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
-    const ora = Date.now();
-    for (const [sid, sessione] of Object.entries(salvate)) {
-      if (ora - (sessione.ultimoUso || 0) > DURATA_SESSIONE) continue;
-      sessione.token.expireDate = new Date(sessione.token.expireDate);
-      sessions.set(sid, sessione);
+    const saved = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
+    const now = Date.now();
+    for (const [sid, session] of Object.entries(saved)) {
+      if (now - (session.lastUsed || 0) > SESSION_TTL) continue;
+      session.token.expireDate = new Date(session.token.expireDate);
+      sessions.set(sid, session);
     }
   } catch {
     // first run or missing file, start with no sessions
   }
 }
 
-let salvataggio = null;
-function salvaSessioni() {
-  clearTimeout(salvataggio);
-  salvataggio = setTimeout(() => {
+let saveTimer = null;
+function saveSessions() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
     fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true, mode: 0o700 });
     fs.writeFileSync(SESSION_FILE, JSON.stringify(Object.fromEntries(sessions)), { mode: 0o600 });
   }, 250);
 }
 
 /** Refresh token and dashboard when needed. If Argo rejects the token the session is dropped. */
-async function aggiornaSeServe(session, forza) {
-  const vecchi = !session.aggiornato || Date.now() - new Date(session.aggiornato).getTime() > DATI_FRESCHI_PER;
-  if (!forza && !vecchi) return;
+async function refreshIfStale(session, force) {
+  const stale = !session.updatedAt || Date.now() - new Date(session.updatedAt).getTime() > DATA_FRESH_FOR;
+  if (!force && !stale) return;
   await refreshIfNeeded(session);
   await loadDashboard(session);
 }
@@ -80,13 +80,13 @@ const sidOf = (req) => (req.headers.cookie || '').match(/(?:^|;\s*)sid=([^;]+)/)
 
 /** Only what the frontend needs, no tokens and no credentials. */
 const publicPayload = (session) => ({
-  profilo: {
-    alunno: session.profilo.alunno,
-    anno: session.profilo.anno,
-    scheda: session.profilo.scheda,
+  profile: {
+    alunno: session.profile.alunno,
+    anno: session.profile.anno,
+    scheda: session.profile.scheda,
   },
   dashboard: session.dashboard,
-  aggiornato: session.aggiornato,
+  updatedAt: session.updatedAt,
 });
 
 const server = http.createServer(async (req, res) => {
@@ -97,12 +97,12 @@ const server = http.createServer(async (req, res) => {
       if (!schoolCode || !username || !password)
         return send(res, 400, { error: 'Servono codice scuola, utente e password' });
       const session = await fullLogin({ schoolCode, username, password });
-      session.ultimoUso = Date.now();
+      session.lastUsed = Date.now();
       const sid = crypto.randomUUID();
       sessions.set(sid, session);
-      salvaSessioni();
+      saveSessions();
       res.setHeader('set-cookie',
-        `sid=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${DURATA_SESSIONE / 1000}`);
+        `sid=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`);
       return send(res, 200, publicPayload(session));
     }
 
@@ -111,54 +111,55 @@ const server = http.createServer(async (req, res) => {
       const session = sessions.get(sid);
       if (!session) return send(res, 401, { error: 'Non autenticato' });
       try {
-        await aggiornaSeServe(session, Boolean(url.searchParams.get('refresh')));
+        await refreshIfStale(session, Boolean(url.searchParams.get('refresh')));
       } catch (err) {
+        // Argo's own wording for a dead token (scaduto, autorizzazione)
         if (/token|scadut|401|autoriz/i.test(err.message)) {
           sessions.delete(sid);
-          salvaSessioni();
+          saveSessions();
           return send(res, 401, { error: 'Sessione scaduta, rifai il login' });
         }
         // Argo unreachable, show whatever we downloaded last time
-        console.error('aggiornamento fallito:', err.message);
+        console.error('refresh failed:', err.message);
       }
-      session.ultimoUso = Date.now();
-      salvaSessioni();
+      session.lastUsed = Date.now();
+      saveSessions();
       return send(res, 200, publicPayload(session));
     }
 
-    // homework state (done flag, notes), see stato.js
-    if (url.pathname === '/api/compiti') {
+    // homework state (done flag, notes), see store.js
+    if (url.pathname === '/api/homework') {
       const session = sessions.get(sidOf(req));
       if (!session) return send(res, 401, { error: 'Non autenticato' });
-      if (!stato.disponibile()) return send(res, 503, { error: 'Salvataggio non configurato' });
-      const pk = session.profilo.alunno.pk;
-      if (req.method === 'GET') return send(res, 200, { stato: await stato.leggiStato(pk) });
+      if (!store.available()) return send(res, 503, { error: 'Salvataggio non configurato' });
+      const pk = session.profile.alunno.pk;
+      if (req.method === 'GET') return send(res, 200, { state: await store.readHomeworkState(pk) });
       if (req.method === 'PUT') {
-        const { chiave, ...patch } = await readBody(req);
-        if (!chiave || typeof chiave !== 'string' || chiave.length > 200)
+        const { key, ...patch } = await readBody(req);
+        if (!key || typeof key !== 'string' || key.length > 200)
           return send(res, 400, { error: 'Chiave compito mancante' });
-        return send(res, 200, { chiave, valore: await stato.salvaStato(pk, chiave, patch) });
+        return send(res, 200, { key, value: await store.saveHomeworkState(pk, key, patch) });
       }
       return send(res, 405, { error: 'Metodo non ammesso' });
     }
 
-    // weekly timetable, whole object in and out, see stato.js
-    if (url.pathname === '/api/orario') {
+    // weekly timetable, whole object in and out, see store.js
+    if (url.pathname === '/api/timetable') {
       const session = sessions.get(sidOf(req));
       if (!session) return send(res, 401, { error: 'Non autenticato' });
-      if (!stato.disponibile()) return send(res, 503, { error: 'Salvataggio non configurato' });
-      const pk = session.profilo.alunno.pk;
-      if (req.method === 'GET') return send(res, 200, { orario: await stato.leggiOrario(pk) });
+      if (!store.available()) return send(res, 503, { error: 'Salvataggio non configurato' });
+      const pk = session.profile.alunno.pk;
+      if (req.method === 'GET') return send(res, 200, { timetable: await store.readTimetable(pk) });
       if (req.method === 'PUT') {
-        const { orario } = await readBody(req);
-        return send(res, 200, { orario: await stato.salvaOrario(pk, orario) });
+        const { timetable } = await readBody(req);
+        return send(res, 200, { timetable: await store.saveTimetable(pk, timetable) });
       }
       return send(res, 405, { error: 'Metodo non ammesso' });
     }
 
     if (url.pathname === '/api/logout' && req.method === 'POST') {
       sessions.delete(sidOf(req));
-      salvaSessioni();
+      saveSessions();
       return send(res, 200, { ok: true });
     }
 
@@ -180,7 +181,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-caricaSessioni();
+loadSessions();
 // the VPS is always on, so it can also keep the Supabase project awake (Netlify has its own scheduled function)
-setInterval(() => stato.keepAlive().catch((err) => console.error('keep alive fallito:', err.message)), 3 * 24 * 3600 * 1000);
-server.listen(PORT, () => console.log(`Registro pronto su http://localhost:${PORT} (${sessions.size} sessioni riprese)`));
+setInterval(() => store.keepAlive().catch((err) => console.error('keep alive failed:', err.message)), 3 * 24 * 3600 * 1000);
+server.listen(PORT, () => console.log(`Register running on http://localhost:${PORT} (${sessions.size} sessions restored)`));

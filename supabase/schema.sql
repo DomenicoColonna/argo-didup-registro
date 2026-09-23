@@ -4,24 +4,24 @@
 -- One row per student and homework item. The server uses the service role
 -- key, which bypasses row level security; RLS is on with no policy so the
 -- anon key can read nothing.
-create table if not exists public.compiti (
-  alunno     text        not null,
-  chiave     text        not null,
-  fatto      boolean     not null default false,
+create table if not exists public.homework (
+  student    text        not null,
+  key        text        not null,
+  done       boolean     not null default false,
   note       text        not null default '',
-  aggiornato timestamptz not null default now(),
-  primary key (alunno, chiave)
+  updated_at timestamptz not null default now(),
+  primary key (student, key)
 );
-alter table public.compiti enable row level security;
+alter table public.homework enable row level security;
 
 -- ---------- timetable ----------
--- One row per student, the whole week as JSON: { lun: [{inizio, fine, materia}], ... ven }.
-create table if not exists public.orario (
-  alunno     text        primary key,
-  dati       jsonb       not null default '{}'::jsonb,
-  aggiornato timestamptz not null default now()
+-- One row per student, the whole week as JSON: { mon: [{start, end, subject}], ... fri }.
+create table if not exists public.timetable (
+  student    text        primary key,
+  data       jsonb       not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
 );
-alter table public.orario enable row level security;
+alter table public.timetable enable row level security;
 
 -- ---------- keepalive ----------
 -- A free project pauses after 7 days without activity. keepalive_ping() does a

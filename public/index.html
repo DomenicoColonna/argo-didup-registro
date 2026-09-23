@@ -44,19 +44,31 @@
   .enter { animation: enter .5s cubic-bezier(.16,1,.3,1) both; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { scrollbar-width: none; }
-  @keyframes scorri-avanti { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
-  @keyframes scorri-indietro { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
-  .scorri-avanti { animation: scorri-avanti .28s cubic-bezier(.16,1,.3,1) both; }
-  .scorri-indietro { animation: scorri-indietro .28s cubic-bezier(.16,1,.3,1) both; }
+  @keyframes slide-forward { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  @keyframes slide-back { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  .slide-forward { animation: slide-forward .28s cubic-bezier(.16,1,.3,1) both; }
+  .slide-back { animation: slide-back .28s cubic-bezier(.16,1,.3,1) both; }
   @media (prefers-reduced-motion: reduce) {
-    .enter, .scorri-avanti, .scorri-indietro { animation: none; }
+    .enter, .slide-forward, .slide-back { animation: none; }
   }
 </style>
 </head>
 <body class="bg-page text-ink font-sans">
 
+<!-- -------------------------------------------------------------- BOOT -->
+<!-- shown while the saved session is checked, so the login form never flashes
+     for someone who is already signed in -->
+<div id="boot-view" class="min-h-screen grid place-items-center p-5
+     bg-[radial-gradient(120%_80%_at_50%_-10%,#7c3aed_0%,#4f46e5_45%,#f4f5fa_100%)]">
+  <div class="flex flex-col items-center gap-4" role="status" aria-live="polite">
+    <img src="/logo.svg" alt="" width="60" height="60"
+      class="animate-pulse drop-shadow-[0_8px_16px_rgba(76,29,149,.35)]">
+    <p class="text-sm font-semibold text-white/85">Apro il registro…</p>
+  </div>
+</div>
+
 <!-- ------------------------------------------------------------- LOGIN -->
-<div id="login-view" class="min-h-screen grid place-items-center p-5
+<div id="login-view" hidden class="hidden min-h-screen grid place-items-center p-5
      bg-[radial-gradient(120%_80%_at_50%_-10%,#7c3aed_0%,#4f46e5_45%,#f4f5fa_100%)]">
   <form id="login-form" class="w-full max-w-sm bg-white rounded-3xl shadow-lift p-7 space-y-5 enter">
     <div class="space-y-1.5">
@@ -119,7 +131,7 @@
           <button id="refresh-btn" title="Aggiorna i dati" aria-label="Aggiorna i dati"
             class="w-10 h-10 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 transition"
             data-icon="refresh"></button>
-          <button id="logout-btn" data-azione="logout" title="Esci" aria-label="Esci"
+          <button id="logout-btn" data-action="logout" title="Esci" aria-label="Esci"
             class="w-10 h-10 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 text-rose-400
                    transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
                    focus-visible:outline-white"
@@ -148,11 +160,11 @@
 
   <main class="max-w-3xl lg:max-w-5xl mx-auto px-5 lg:px-10 -mt-10 lg:mt-7 relative">
     <section id="tab-home" class="tab-panel hidden"></section>
-    <section id="tab-calendario" class="tab-panel hidden"></section>
-    <section id="tab-compiti" class="tab-panel hidden"></section>
-    <section id="tab-orario" class="tab-panel hidden"></section>
-    <section id="tab-voti" class="tab-panel hidden"></section>
-    <section id="tab-media" class="tab-panel hidden"></section>
+    <section id="tab-calendar" class="tab-panel hidden"></section>
+    <section id="tab-homework" class="tab-panel hidden"></section>
+    <section id="tab-timetable" class="tab-panel hidden"></section>
+    <section id="tab-grades" class="tab-panel hidden"></section>
+    <section id="tab-average" class="tab-panel hidden"></section>
     <p id="updated-at" class="text-center text-xs text-ink-faint mt-8"></p>
   </main>
 
@@ -168,7 +180,7 @@
     <div class="mt-auto rounded-2xl bg-page p-3">
       <p id="side-name" class="font-bold text-sm truncate"></p>
       <p id="side-meta" class="text-xs text-ink-faint truncate"></p>
-      <button data-azione="logout"
+      <button data-action="logout"
         class="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200
                py-2 text-sm font-semibold text-rose-500 hover:bg-rose-50 transition
                focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
@@ -183,9 +195,9 @@
     <div class="pointer-events-auto mx-auto w-full max-w-md bg-white/95 backdrop-blur
                 border border-slate-200/70 shadow-lift rounded-[20px] grid grid-cols-4 gap-1 p-2">
       <button data-tab="home" class="tab" data-icon="home" data-label="Home"></button>
-      <button data-tab="calendario" class="tab" data-icon="calendar" data-label="Calendario"></button>
-      <button data-tab="compiti" class="tab" data-icon="check" data-label="Compiti"></button>
-      <button data-tab="orario" class="tab" data-icon="clock" data-label="Orario"></button>
+      <button data-tab="calendar" class="tab" data-icon="calendar" data-label="Calendario"></button>
+      <button data-tab="homework" class="tab" data-icon="check" data-label="Compiti"></button>
+      <button data-tab="timetable" class="tab" data-icon="clock" data-label="Orario"></button>
     </div>
   </nav>
 </div>
@@ -200,86 +212,86 @@
       La sessione viene chiusa e dovrai reinserire codice scuola, utente e password per rientrare.
     </p>
     <div class="flex gap-2 mt-5">
-      <button id="logout-annulla" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
+      <button id="logout-cancel" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
         hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
-      <button id="logout-conferma" class="flex-1 rounded-xl bg-rose-500 text-white font-semibold py-2.5
+      <button id="logout-confirm" class="flex-1 rounded-xl bg-rose-500 text-white font-semibold py-2.5
         hover:bg-rose-600 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-rose-600">Esci</button>
     </div>
   </div>
 </dialog>
 
-<dialog id="nota-dialog"
+<dialog id="note-dialog"
   class="w-[min(24rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
          backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
   <div class="p-6">
     <div class="w-11 h-11 rounded-2xl bg-violet-50 text-violet-600 grid place-items-center" data-icon="pencil"></div>
-    <h2 id="nota-materia" class="text-lg font-extrabold tracking-tight mt-3"></h2>
-    <p id="nota-testo" class="text-sm text-ink-soft mt-1 line-clamp-3 whitespace-pre-wrap"></p>
+    <h2 id="note-subject" class="text-lg font-extrabold tracking-tight mt-3"></h2>
+    <p id="note-text" class="text-sm text-ink-soft mt-1 line-clamp-3 whitespace-pre-wrap"></p>
     <label class="block mt-4">
       <span class="text-xs font-semibold text-ink-soft">La tua nota</span>
-      <textarea id="nota-input" rows="4" maxlength="2000" placeholder="Pagine, esercizi, cose da ricordare…"
+      <textarea id="note-input" rows="4" maxlength="2000" placeholder="Pagine, esercizi, cose da ricordare…"
         class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px] resize-y
                outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"></textarea>
     </label>
     <div class="flex gap-2 mt-5">
-      <button id="nota-elimina" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
+      <button id="note-delete" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
         hover:bg-rose-50 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-rose-500">Elimina</button>
-      <button id="nota-annulla" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
+      <button id="note-cancel" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
         hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
-      <button id="nota-salva" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
+      <button id="note-save" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
         hover:bg-violet-700 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-violet-600">Salva</button>
     </div>
   </div>
 </dialog>
 
-<dialog id="ora-dialog"
+<dialog id="slot-dialog"
   class="w-[min(24rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
          backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
-  <form id="ora-form" class="p-6" novalidate>
+  <form id="slot-form" class="p-6" novalidate>
     <div class="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 grid place-items-center" data-icon="clock"></div>
-    <h2 id="ora-titolo" class="text-lg font-extrabold tracking-tight mt-3">Nuova ora</h2>
-    <p id="ora-giorno" class="text-sm text-ink-soft mt-1"></p>
+    <h2 id="slot-title" class="text-lg font-extrabold tracking-tight mt-3">Nuova ora</h2>
+    <p id="slot-day" class="text-sm text-ink-soft mt-1"></p>
     <div class="grid grid-cols-2 gap-3 mt-4">
       <label class="block">
         <span class="text-xs font-semibold text-ink-soft">Dalle</span>
-        <input id="ora-inizio" type="time" required step="300"
+        <input id="slot-start" type="time" required step="300"
           class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
                  outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
       </label>
       <label class="block">
         <span class="text-xs font-semibold text-ink-soft">Alle</span>
-        <input id="ora-fine" type="time" required step="300"
+        <input id="slot-end" type="time" required step="300"
           class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
                  outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
       </label>
     </div>
     <label class="block mt-3">
       <span class="text-xs font-semibold text-ink-soft">Materia</span>
-      <input id="ora-materia" list="materie-list" required maxlength="60" autocomplete="off" placeholder="Matematica"
+      <input id="slot-subject" list="subjects-list" required maxlength="60" autocomplete="off" placeholder="Matematica"
         class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
                outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
-      <datalist id="materie-list"></datalist>
+      <datalist id="subjects-list"></datalist>
     </label>
-    <p id="ora-errore" class="hidden mt-3 text-sm text-rose-600 bg-rose-50 rounded-xl px-3.5 py-2.5"></p>
+    <p id="slot-error" class="hidden mt-3 text-sm text-rose-600 bg-rose-50 rounded-xl px-3.5 py-2.5"></p>
     <div class="flex gap-2 mt-5">
-      <button type="button" id="ora-elimina" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
+      <button type="button" id="slot-delete" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
         hover:bg-rose-50 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-rose-500">Elimina</button>
-      <button type="button" id="ora-annulla" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
+      <button type="button" id="slot-cancel" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
         hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
-      <button type="submit" id="ora-salva" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
+      <button type="submit" id="slot-save" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
         hover:bg-violet-700 transition focus-visible:outline focus-visible:outline-2
         focus-visible:outline-offset-2 focus-visible:outline-violet-600">Salva</button>
     </div>
   </form>
 </dialog>
 
-<script src="/app.js?v=11"></script>
+<script src="/app.js?v=13"></script>
 </body>
 </html>

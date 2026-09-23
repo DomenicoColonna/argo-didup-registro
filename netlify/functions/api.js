@@ -2,13 +2,13 @@
 /**
  * Same endpoints as server.js, as a Netlify function.
  * Functions are stateless, so the session (Argo tokens, login data, a slice of
- * the profile) travels inside an encrypted cookie instead of dati/sessioni.json.
+ * the profile) travels inside an encrypted cookie instead of data/sessions.json.
  * The dashboard is downloaded again on every /api/data call.
  */
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { fullLogin, loadDashboard, refreshIfNeeded } = require('../../argo');
-const stato = require('../../stato');
+const store = require('../../store');
 
 const COOKIE = 'sid';
 const MAX_AGE = 180 * 24 * 3600; // seconds, same as server.js
@@ -26,7 +26,7 @@ function slim(session) {
   return {
     token: { access_token, refresh_token, scope, expireDate },
     login: session.login,
-    profilo: { alunno: session.profilo.alunno, anno: session.profilo.anno, scheda: session.profilo.scheda },
+    profile: { alunno: session.profile.alunno, anno: session.profile.anno, scheda: session.profile.scheda },
   };
 }
 
@@ -44,7 +44,12 @@ function open(value) {
     const decipher = crypto.createDecipheriv('aes-256-gcm', key(), buf.subarray(0, 12));
     decipher.setAuthTag(buf.subarray(12, 28));
     const plain = Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]);
-    return JSON.parse(zlib.gunzipSync(plain).toString());
+    const session = JSON.parse(zlib.gunzipSync(plain).toString());
+    // cookies sealed before the code moved to English names keep the profile
+    // under its old key, read them anyway so nobody gets logged out
+    if (!session.profile && session.profilo) session.profile = session.profilo;
+    delete session.profilo;
+    return session;
   } catch {
     return null;
   }
@@ -70,9 +75,9 @@ const reply = (statusCode, body, cookie) => ({
 });
 
 const publicPayload = (session) => ({
-  profilo: { alunno: session.profilo.alunno, anno: session.profilo.anno, scheda: session.profilo.scheda },
+  profile: { alunno: session.profile.alunno, anno: session.profile.anno, scheda: session.profile.scheda },
   dashboard: session.dashboard,
-  aggiornato: session.aggiornato,
+  updatedAt: session.updatedAt,
 });
 
 function readBody(event) {
@@ -106,6 +111,7 @@ exports.handler = async (event) => {
         await refreshIfNeeded(session);
         await loadDashboard(session);
       } catch (err) {
+        // Argo's own wording for a dead token (scaduto, autorizzazione)
         if (/token|scadut|401|autoriz/i.test(err.message))
           return reply(401, { error: 'Sessione scaduta, rifai il login' }, setCookie('', 0));
         throw err;
@@ -115,34 +121,34 @@ exports.handler = async (event) => {
       return reply(200, publicPayload(session), renewed);
     }
 
-    // homework state (done flag, notes), see stato.js
-    if (route === 'compiti') {
+    // homework state (done flag, notes), see store.js
+    if (route === 'homework') {
       const cookie = cookieOf(event);
       const session = cookie && open(cookie);
       if (!session) return reply(401, { error: 'Non autenticato' });
-      if (!stato.disponibile()) return reply(503, { error: 'Salvataggio non configurato' });
-      const pk = session.profilo.alunno.pk;
-      if (method === 'GET') return reply(200, { stato: await stato.leggiStato(pk) });
+      if (!store.available()) return reply(503, { error: 'Salvataggio non configurato' });
+      const pk = session.profile.alunno.pk;
+      if (method === 'GET') return reply(200, { state: await store.readHomeworkState(pk) });
       if (method === 'PUT') {
-        const { chiave, ...patch } = readBody(event);
-        if (!chiave || typeof chiave !== 'string' || chiave.length > 200)
+        const { key, ...patch } = readBody(event);
+        if (!key || typeof key !== 'string' || key.length > 200)
           return reply(400, { error: 'Chiave compito mancante' });
-        return reply(200, { chiave, valore: await stato.salvaStato(pk, chiave, patch) });
+        return reply(200, { key, value: await store.saveHomeworkState(pk, key, patch) });
       }
       return reply(405, { error: 'Metodo non ammesso' });
     }
 
-    // weekly timetable, whole object in and out, see stato.js
-    if (route === 'orario') {
+    // weekly timetable, whole object in and out, see store.js
+    if (route === 'timetable') {
       const cookie = cookieOf(event);
       const session = cookie && open(cookie);
       if (!session) return reply(401, { error: 'Non autenticato' });
-      if (!stato.disponibile()) return reply(503, { error: 'Salvataggio non configurato' });
-      const pk = session.profilo.alunno.pk;
-      if (method === 'GET') return reply(200, { orario: await stato.leggiOrario(pk) });
+      if (!store.available()) return reply(503, { error: 'Salvataggio non configurato' });
+      const pk = session.profile.alunno.pk;
+      if (method === 'GET') return reply(200, { timetable: await store.readTimetable(pk) });
       if (method === 'PUT') {
-        const { orario } = readBody(event);
-        return reply(200, { orario: await stato.salvaOrario(pk, orario) });
+        const { timetable } = readBody(event);
+        return reply(200, { timetable: await store.saveTimetable(pk, timetable) });
       }
       return reply(405, { error: 'Metodo non ammesso' });
     }

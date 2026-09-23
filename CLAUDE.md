@@ -7,10 +7,10 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 
 - `argo.js` API client (OAuth2 PKCE login, token refresh, `apiRequest`)
 - `server.js` HTTP server on port 3000, `/api/login`, `/api/data`, `/api/logout`,
-  `/api/compiti`, `/api/orario`, static files from `public/`, sessions in
-  `dati/sessioni.json`
-- `stato.js` homework done flags and notes plus the weekly timetable, Supabase
-  (`SUPABASE_URL` and `SUPABASE_SERVICE_KEY`) or `dati/*.json` on the VPS; the
+  `/api/homework`, `/api/timetable`, static files from `public/`, sessions in
+  `data/sessions.json`
+- `store.js` homework done flags and notes plus the weekly timetable, Supabase
+  (`SUPABASE_URL` and `SUPABASE_SERVICE_KEY`) or `data/*.json` on the VPS; the
   tables and the `keepalive_ping()` function are in `supabase/schema.sql`
 - `netlify/functions/keepalive.js` and `.github/workflows/keepalive.yml` ping
   Supabase daily so the free project does not pause
@@ -21,16 +21,20 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 
 ## Rules
 
-- Never write credentials to disk. Only Argo tokens go in `dati/`, which stays
+- Never write credentials to disk. Only Argo tokens go in `data/`, which stays
   out of git together with `references/`.
 - The mobile layout is final. Do not touch it. Desktop only changes go behind
   the `lg:` breakpoint.
-- Averages are computed locally, see `calcolaMedie` in `public/app.js`. A grade
+- Averages are computed locally, see `computeAverages` in `public/app.js`. A grade
   counts unless `numMedia === 0` or `faMenoMedia === 'S'`.
 - The calendar only shows September to June of the current school year.
-- Homework has no id from Argo: `chiaveCompito` (due day, subject, text hash)
-  is the key of the saved state. Changing it orphans everything already saved.
-- Code comments are in English. UI text and variable names stay in Italian.
+- Homework has no id from Argo: `homeworkKey` (due day, subject, text hash)
+  is the key of the saved state. Changing its output orphans everything already saved.
+- All code is in English: variables, functions, file names, endpoints, JSON keys,
+  element ids, CSS classes, localStorage keys, database tables and columns, comments.
+  Only the text shown in the UI is Italian. Argo's own field names (`desMateria`,
+  `registro`...) stay as the API sends them, and get mapped to English objects
+  right where they are read (`grades()`, `homework()` in `public/app.js`).
 - Commit and push only when asked.
 - `server.js` (VPS) and `netlify/functions/api.js` (Netlify) must keep the same
   endpoints and response shape, the frontend does not know which one it talks to.

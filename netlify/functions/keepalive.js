@@ -1,17 +1,17 @@
 'use strict';
 /**
- * Scheduled function (see netlify.toml): a small read on the compiti table so
- * the free Supabase project does not get paused after a week without traffic.
+ * Scheduled function (see netlify.toml): calls keepalive_ping() so the free
+ * Supabase project does not get paused after a week without traffic.
  */
-const { keepAlive } = require('../../stato');
+const { keepAlive } = require('../../store');
 
 exports.handler = async () => {
   try {
-    const fatto = await keepAlive();
-    console.log(fatto ? 'supabase keep alive ok' : 'supabase non configurato, niente da fare');
+    const pinged = await keepAlive();
+    console.log(pinged ? 'supabase keep alive ok' : 'supabase not configured, nothing to do');
     return { statusCode: 200 };
   } catch (err) {
-    console.error('keep alive fallito:', err.message);
+    console.error('keep alive failed:', err.message);
     return { statusCode: 500 };
   }
 };

@@ -121,10 +121,10 @@ async function getAuthCode({ schoolCode, username, password }, onStep = () => {}
     const err = (html.match(/class="[^"]*(?:error|alert)[^"]*"[^>]*>\s*([^<]{3,200})/i) || [])[1];
     throw new Error(err ? `Argo risponde: ${err.trim()}` : 'Login rifiutato da Argo (nessun redirect)');
   }
-  const finale = new URL(second.location);
-  const code = finale.searchParams.get('code');
+  const callback = new URL(second.location);
+  const code = callback.searchParams.get('code');
   if (!code) {
-    const argoError = finale.searchParams.get('error_description') || finale.searchParams.get('error');
+    const argoError = callback.searchParams.get('error_description') || callback.searchParams.get('error');
     throw new Error(argoError ? `Argo: ${argoError}` : 'Credenziali o codice scuola non validi');
   }
   return { code, codeVerifier };
@@ -219,23 +219,24 @@ async function refreshIfNeeded(session) {
 }
 
 async function loadDashboard(session) {
-  const opzioni = Object.fromEntries((session.login.opzioni || []).map((o) => [o.chiave, o.valore]));
+  // Argo field names, the request has to be spelled exactly like this
+  const options = Object.fromEntries((session.login.opzioni || []).map((o) => [o.chiave, o.valore]));
   const dashboard = await apiRequest(session, 'dashboard/dashboard', {
-    dataultimoaggiornamento: formatDate(session.profilo.anno.dataInizio),
-    opzioni: JSON.stringify(opzioni),
+    dataultimoaggiornamento: formatDate(session.profile.anno.dataInizio),
+    opzioni: JSON.stringify(options),
   });
-  const dati = dashboard.data.dati;
-  if (!Array.isArray(dati) || !dati[0]) throw new Error('Dashboard vuota, riprova più tardi');
-  session.dashboard = dati[0];
-  session.aggiornato = new Date().toISOString();
+  const rows = dashboard.data.dati;
+  if (!Array.isArray(rows) || !rows[0]) throw new Error('Dashboard vuota, riprova più tardi');
+  session.dashboard = rows[0];
+  session.updatedAt = new Date().toISOString();
   return session.dashboard;
 }
 
-/** Full login: token, then login, profilo and dashboard. */
+/** Full login: token, then login, profile and dashboard. */
 async function fullLogin(credentials, onStep = () => {}) {
   const session = {};
   session.token = await exchangeToken(await getAuthCode(credentials, onStep));
-  onStep('token', { scadenza: session.token.expireDate });
+  onStep('token', { expires: session.token.expireDate });
 
   const login = await apiRequest(session, 'login', {
     'lista-opzioni-notifiche': '{}',
@@ -246,13 +247,13 @@ async function fullLogin(credentials, onStep = () => {}) {
   session.login = login.data[0];
   onStep('login', { codMin: session.login.codMin, username: session.login.username });
 
-  session.profilo = (await apiRequest(session, 'profilo')).data;
-  onStep('profilo', { alunno: session.profilo.alunno?.nominativo });
+  session.profile = (await apiRequest(session, 'profilo')).data;
+  onStep('profilo', { student: session.profile.alunno?.nominativo });
 
   await loadDashboard(session);
   onStep('dashboard', {
-    voti: (session.dashboard.voti || []).length,
-    lezioni: (session.dashboard.registro || []).length,
+    grades: (session.dashboard.voti || []).length,
+    lessons: (session.dashboard.registro || []).length,
   });
   return session;
 }

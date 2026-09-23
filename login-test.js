@@ -2,32 +2,32 @@
 /**
  * Login diagnostics, shows at which step the Argo flow fails.
  * Usage: node login-test.js            (asks for the credentials)
- *        ARGO_SCUOLA=SS12345 ARGO_USER=... ARGO_PASS=... node login-test.js
+ *        ARGO_SCHOOL=SS12345 ARGO_USER=... ARGO_PASS=... node login-test.js
  */
 const readline = require('node:readline');
 const { fullLogin } = require('./argo');
 
-const chiedi = (domanda, nascondi = false) =>
+const ask = (question, hidden = false) =>
   new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    if (nascondi) {
-      rl._writeToOutput = function (s) { if (s.includes(domanda)) rl.output.write(s); };
+    if (hidden) {
+      rl._writeToOutput = function (s) { if (s.includes(question)) rl.output.write(s); };
     }
-    rl.question(domanda, (risposta) => { rl.close(); if (nascondi) process.stdout.write('\n'); resolve(risposta.trim()); });
+    rl.question(question, (answer) => { rl.close(); if (hidden) process.stdout.write('\n'); resolve(answer.trim()); });
   });
 
 (async () => {
-  const schoolCode = process.env.ARGO_SCUOLA || (await chiedi('Codice scuola: '));
-  const username = process.env.ARGO_USER || (await chiedi('Utente: '));
-  const password = process.env.ARGO_PASS || (await chiedi('Password: ', true));
+  const schoolCode = process.env.ARGO_SCHOOL || (await ask('Codice scuola: '));
+  const username = process.env.ARGO_USER || (await ask('Utente: '));
+  const password = process.env.ARGO_PASS || (await ask('Password: ', true));
 
   try {
-    const session = await fullLogin({ schoolCode, username, password }, (passo, info) => {
-      console.log(`  [ok] ${passo}`, info);
+    const session = await fullLogin({ schoolCode, username, password }, (step, info) => {
+      console.log(`  [ok] ${step}`, info);
     });
     console.log('\nLogin riuscito.');
-    console.log('Alunno :', session.profilo.alunno?.nominativo);
-    console.log('Classe :', session.profilo.scheda?.classe?.desDenominazione + (session.profilo.scheda?.classe?.desSezione || ''));
+    console.log('Alunno :', session.profile.alunno?.nominativo);
+    console.log('Classe :', session.profile.scheda?.classe?.desDenominazione + (session.profile.scheda?.classe?.desSezione || ''));
     console.log('Voti   :', (session.dashboard.voti || []).length);
     console.log('Lezioni:', (session.dashboard.registro || []).length);
   } catch (err) {
