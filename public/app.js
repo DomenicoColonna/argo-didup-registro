@@ -7,6 +7,7 @@ const state = {
   month: startOfMonth(new Date()),
   selectedDay: isoDay(new Date()),
   homeworkFilter: 'upcoming', // 'upcoming' | 'all' | 'todo' | 'done'
+  homeworkSubject: '*',   // subject picked in the header menu of the homework tab, '*' is all of them
   averageAllGrades: false,
   homeworkState: {},      // homework key -> { done, note }, see loadSavedState
   timetable: null,        // { mon: [{ start, end, subject }], ... fri }, see loadSavedState
@@ -296,9 +297,9 @@ function computeAverages() {
   };
 }
 
-// ------------------------------------------------ period selector (custom)
+// --------------------------------------------------- header menu (custom)
 
-let periodMenuOpen = false;
+let headerMenuOpen = false;
 
 /**
  * Argo already lists an "Intero Anno" period with pk "*", so no option of our
@@ -311,16 +312,52 @@ function periodOptions() {
   return [{ pk: '*', name: 'Intero anno', note: year ? `Anno scolastico ${year}` : '' }, ...list];
 }
 
-function renderPeriod() {
-  const menu = el('period-menu');
-  const options = periodOptions();
-  const current = options.find((o) => o.pk === state.period) || options.find((o) => o.pk === '*') || options[0];
-  el('period-label').textContent = current.name;
+/** Every subject that has homework, with how much of it is still to do. */
+function subjectOptions() {
+  const todo = new Map();
+  for (const h of homework()) todo.set(h.subject, (todo.get(h.subject) || 0) + (h.done ? 0 : 1));
+  const total = [...todo.values()].reduce((s, n) => s + n, 0);
+  const note = (n) => (n ? `${n} da fare` : 'niente da fare');
+  return [
+    { pk: '*', name: 'Tutte le materie', note: note(total) },
+    ...[...todo.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, 'it'))
+      .map(([subject, n]) => ({ pk: subject, name: subject, note: note(n) })),
+  ];
+}
 
-  menu.innerHTML = options.map((o) => {
-    const chosen = o.pk === state.period;
+/**
+ * The dropdown in the header picks the period, except in the homework tab,
+ * where periods change nothing and it picks the subject instead.
+ */
+function headerMenu() {
+  if (state.tab === 'homework') {
+    return {
+      label: 'Materia',
+      options: subjectOptions(),
+      value: state.homeworkSubject,
+      choose: (pk) => { state.homeworkSubject = pk; },
+    };
+  }
+  return {
+    label: 'Periodo',
+    options: periodOptions(),
+    value: state.period,
+    choose: (pk) => { state.period = pk; },
+  };
+}
+
+function renderHeaderMenu() {
+  const list = el('header-menu-list');
+  const { label, options, value, choose } = headerMenu();
+  const current = options.find((o) => o.pk === value) || options.find((o) => o.pk === '*') || options[0];
+  el('header-menu-label').textContent = current.name;
+  list.setAttribute('aria-label', label);
+
+  list.innerHTML = options.map((o) => {
+    const chosen = o === current;
     return `
-      <button type="button" role="option" data-pk="${esc(o.pk)}" aria-selected="${chosen}"
+      <button type="button" role="option" data-option="${esc(o.pk)}" aria-selected="${chosen}"
         class="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl transition
                ${chosen ? 'bg-violet-50' : 'hover:bg-page'}
                focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600">
@@ -332,45 +369,44 @@ function renderPeriod() {
       </button>`;
   }).join('');
 
-  for (const b of menu.querySelectorAll('[data-pk]')) {
+  for (const b of list.querySelectorAll('[data-option]')) {
     b.onclick = (e) => {
-      state.period = b.dataset.pk;
+      choose(b.dataset.option);
       // focus goes back to the button only when the choice came from the keyboard (detail 0)
-      closePeriodMenu(e.detail === 0);
-      renderPeriod();
+      closeHeaderMenu(e.detail === 0);
       render();
     };
   }
 }
 
-function openPeriodMenu() {
-  const menu = el('period-menu');
+function openHeaderMenu() {
+  const menu = el('header-menu-list');
   menu.hidden = false;
   requestAnimationFrame(() => menu.classList.remove('opacity-0', 'scale-95', '-translate-y-1'));
-  el('period-btn').setAttribute('aria-expanded', 'true');
-  el('period-chevron').classList.add('rotate-180');
-  periodMenuOpen = true;
+  el('header-menu-btn').setAttribute('aria-expanded', 'true');
+  el('header-menu-chevron').classList.add('rotate-180');
+  headerMenuOpen = true;
 }
 
-function closePeriodMenu(refocus = false) {
-  if (!periodMenuOpen) return;
-  const menu = el('period-menu');
+function closeHeaderMenu(refocus = false) {
+  if (!headerMenuOpen) return;
+  const menu = el('header-menu-list');
   menu.classList.add('opacity-0', 'scale-95', '-translate-y-1');
-  el('period-btn').setAttribute('aria-expanded', 'false');
-  el('period-chevron').classList.remove('rotate-180');
-  periodMenuOpen = false;
-  setTimeout(() => { if (!periodMenuOpen) menu.hidden = true; }, 160);
-  if (refocus) el('period-btn').focus();
+  el('header-menu-btn').setAttribute('aria-expanded', 'false');
+  el('header-menu-chevron').classList.remove('rotate-180');
+  headerMenuOpen = false;
+  setTimeout(() => { if (!headerMenuOpen) menu.hidden = true; }, 160);
+  if (refocus) el('header-menu-btn').focus();
 }
 
 /** Arrows move between items, enter picks one, esc closes the menu. */
-function periodMenuKeys(e) {
-  const items = [...el('period-menu').querySelectorAll('[data-pk]')];
-  if (e.key === 'Escape') return closePeriodMenu(true);
-  if (e.key === 'Tab') return closePeriodMenu();
+function headerMenuKeys(e) {
+  const items = [...el('header-menu-list').querySelectorAll('[data-option]')];
+  if (e.key === 'Escape') return closeHeaderMenu(true);
+  if (e.key === 'Tab') return closeHeaderMenu();
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   e.preventDefault();
-  if (!periodMenuOpen) openPeriodMenu();
+  if (!headerMenuOpen) openHeaderMenu();
   const i = items.indexOf(document.activeElement);
   const step = e.key === 'ArrowDown' ? 1 : -1;
   items[i < 0 ? (step > 0 ? 0 : items.length - 1) : (i + step + items.length) % items.length]?.focus();
@@ -457,7 +493,6 @@ function showApp({ animate = true } = {}) {
     el(id).classList.add('hidden');
   }
   el('app-view').classList.remove('hidden');
-  renderPeriod();
   render({ animate });
   // the saved homework state and timetable only need loading once
   if (!started) {
@@ -514,6 +549,7 @@ const sessionEnded = (ex) => ex?.status === 401;
 
 /** `animate: false` swaps the content in place, used when fresh data replaces the saved one. */
 function render({ animate = true } = {}) {
+  renderHeaderMenu();
   const p = state.data.profile;
   const name = p.alunno?.nome || p.alunno?.nominativo || '';
   el('student-name').textContent = name ? `Ciao, ${name}` : 'Il tuo registro';
@@ -852,7 +888,9 @@ function renderHomework() {
     done: { name: 'Fatti', keeps: (h) => h.done, empty: 'Ancora nessun compito segnato come fatto.' },
   };
   const current = filters[state.homeworkFilter] || filters.upcoming;
-  const list = all.filter(current.keeps);
+  // a subject that no longer has homework (after a refresh) counts as all of them
+  const subject = all.some((h) => h.subject === state.homeworkSubject) ? state.homeworkSubject : '*';
+  const list = all.filter((h) => (subject === '*' || h.subject === subject) && current.keeps(h));
   const byDay = new Map();
   for (const h of list) byDay.set(h.day, [...(byDay.get(h.day) || []), h]);
   const doneCount = list.filter((h) => h.done).length;
@@ -1219,6 +1257,7 @@ function renderTimetable() {
   for (const b of panel.querySelectorAll('[data-open-homework]')) {
     b.onclick = () => {
       state.homeworkFilter = 'todo';
+      state.homeworkSubject = '*'; // whatever was picked before must not hide it
       state.tab = 'homework';
       window.scrollTo({ top: 0 });
       render();
@@ -1506,11 +1545,11 @@ slotDialog.addEventListener('click', (e) => {
   if (e.target === slotDialog) closeSlotDialog();
 });
 slotDialog.addEventListener('close', () => { editedSlot = null; });
-el('period-btn').addEventListener('click', () => (periodMenuOpen ? closePeriodMenu() : openPeriodMenu()));
-el('period-btn').addEventListener('keydown', periodMenuKeys);
-el('period-menu').addEventListener('keydown', periodMenuKeys);
+el('header-menu-btn').addEventListener('click', () => (headerMenuOpen ? closeHeaderMenu() : openHeaderMenu()));
+el('header-menu-btn').addEventListener('keydown', headerMenuKeys);
+el('header-menu-list').addEventListener('keydown', headerMenuKeys);
 document.addEventListener('click', (e) => {
-  if (periodMenuOpen && !el('period').contains(e.target)) closePeriodMenu();
+  if (headerMenuOpen && !el('header-menu').contains(e.target)) closeHeaderMenu();
 });
 for (const btn of document.querySelectorAll('.tab')) {
   btn.addEventListener('click', () => { state.tab = btn.dataset.tab; window.scrollTo({ top: 0 }); render(); });

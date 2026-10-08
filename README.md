@@ -58,6 +58,11 @@ blue after that. Done items get a green row and are skipped by the "da fare"
 counters on the home page. The calendar shows the same buttons in the day panel
 and turns the homework dot green once everything of that day is done.
 
+The dropdown in the header picks the Argo period everywhere else. Periods change
+nothing for homework, so in the Compiti tab the same dropdown picks the subject
+instead ("Tutte le materie" plus every subject that has homework, each with how
+much is still to do). It combines with the four filters.
+
 Argo gives homework no id, so each item is keyed by due day, subject and a hash
 of the text (`homeworkKey` in `public/app.js`). If the teacher edits the text
 the flag is lost, nothing worse.

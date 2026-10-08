@@ -115,7 +115,7 @@
   <header class="bg-[linear-gradient(135deg,#7c3aed_0%,#4f46e5_55%,#4338ca_100%)] text-white
                  rounded-b-[28px] px-5 pt-6 pb-16 relative lg:px-10 lg:pt-8 lg:pb-8">
     <!-- the decorations are clipped in here, the header itself must keep overflow
-         visible or the period dropdown gets cut off -->
+         visible or the header dropdown gets cut off -->
     <div class="absolute inset-0 overflow-hidden rounded-b-[28px] pointer-events-none">
       <div class="absolute -right-16 -top-20 w-64 h-64 rounded-full bg-white/10"></div>
       <div class="absolute -left-24 top-10 w-56 h-56 rounded-full bg-white/5"></div>
@@ -139,16 +139,16 @@
         </div>
       <!-- on mobile it wraps under the greeting, on desktop it fits on the same row -->
       <div class="order-3 lg:order-2 w-full lg:w-auto lg:ml-auto mt-5 lg:mt-0">
-        <div id="period" class="relative inline-block text-left">
-          <button id="period-btn" type="button" aria-haspopup="listbox" aria-expanded="false"
-            class="flex items-center gap-2 text-sm font-semibold bg-white/15 hover:bg-white/25
+        <div id="header-menu" class="relative inline-block text-left max-w-full lg:max-w-xs">
+          <button id="header-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false"
+            class="flex items-center gap-2 max-w-full text-sm font-semibold bg-white/15 hover:bg-white/25
                    rounded-full pl-4 pr-3 py-2 transition focus-visible:outline focus-visible:outline-2
                    focus-visible:outline-offset-2 focus-visible:outline-white/70">
-            <span id="period-label">Intero anno</span>
-            <span id="period-chevron" class="transition-transform duration-200" data-icon="chevronDown"
+            <span id="header-menu-label" class="min-w-0 truncate">Intero anno</span>
+            <span id="header-menu-chevron" class="shrink-0 transition-transform duration-200" data-icon="chevronDown"
                   data-icon-size="w-4 h-4"></span>
           </button>
-          <div id="period-menu" hidden role="listbox" aria-label="Periodo"
+          <div id="header-menu-list" hidden role="listbox" aria-label="Periodo"
             class="absolute left-0 top-full mt-2 w-[17rem] max-w-[calc(100vw-2.5rem)] z-40 p-1.5
                    bg-white text-ink rounded-2xl shadow-lift origin-top-left
                    transition duration-150 ease-out opacity-0 scale-95 -translate-y-1"></div>
@@ -292,6 +292,6 @@
   </form>
 </dialog>
 
-<script src="/app.js?v=13"></script>
+<script src="/app.js?v=14"></script>
 </body>
 </html>
