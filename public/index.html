@@ -138,7 +138,7 @@
             data-icon="logout"></button>
         </div>
       <!-- on mobile it wraps under the greeting, on desktop it fits on the same row -->
-      <div class="order-3 lg:order-2 w-full lg:w-auto lg:ml-auto mt-5 lg:mt-0">
+      <div id="header-menu-row" class="order-3 lg:order-2 w-full lg:w-auto lg:ml-auto mt-5 lg:mt-0">
         <div id="header-menu" class="relative inline-block text-left max-w-full lg:max-w-xs">
           <button id="header-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false"
             class="flex items-center gap-2 max-w-full text-sm font-semibold bg-white/15 hover:bg-white/25
@@ -165,6 +165,9 @@
     <section id="tab-timetable" class="tab-panel hidden"></section>
     <section id="tab-grades" class="tab-panel hidden"></section>
     <section id="tab-average" class="tab-panel hidden"></section>
+    <section id="tab-absences" class="tab-panel hidden"></section>
+    <section id="tab-reminders" class="tab-panel hidden"></section>
+    <section id="tab-noticeboard" class="tab-panel hidden"></section>
     <p id="updated-at" class="text-center text-xs text-ink-faint mt-8"></p>
   </main>
 
@@ -292,6 +295,6 @@
   </form>
 </dialog>
 
-<script src="/app.js?v=14"></script>
+<script src="/app.js?v=15"></script>
 </body>
 </html>

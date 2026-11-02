@@ -9,7 +9,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { fullLogin, loadDashboard, refreshIfNeeded } = require('./argo');
+const { fullLogin, loadDashboard, refreshIfNeeded, attachmentUrl } = require('./argo');
 const store = require('./store');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -155,6 +155,18 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { timetable: await store.saveTimetable(pk, timetable) });
       }
       return send(res, 405, { error: 'Metodo non ammesso' });
+    }
+
+    // noticeboard attachment: a redirect to Argo's short lived link, opened by a plain <a>
+    if (url.pathname === '/api/attachment' && req.method === 'GET') {
+      const session = sessions.get(sidOf(req));
+      if (!session) return send(res, 401, { error: 'Non autenticato' });
+      const uid = url.searchParams.get('uid') || '';
+      if (!uid || uid.length > 300) return send(res, 400, { error: 'Allegato non valido' });
+      await refreshIfNeeded(session);
+      const link = await attachmentUrl(session, uid, url.searchParams.get('personal') === '1');
+      res.writeHead(302, { location: link, 'cache-control': 'no-store' });
+      return res.end();
     }
 
     if (url.pathname === '/api/logout' && req.method === 'POST') {

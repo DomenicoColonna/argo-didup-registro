@@ -39,6 +39,11 @@ const ICON_PATHS = {
   arrowRight: '<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
   pencil: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M13.5 6.5l3 3"/>',
   plus: '<path d="M12 5.5v13M5.5 12h13"/>',
+  megaphone: '<path d="M4 10v4a1 1 0 0 0 1 1h2.5L14 19V5L7.5 9H5a1 1 0 0 0-1 1z"/><path d="M17.5 9a4 4 0 0 1 0 6"/><path d="M8 15l1.2 5h2.3L11 16.3"/>',
+  userX: '<circle cx="10" cy="8" r="4"/><path d="M3 20.5c.8-3.6 3.6-5.5 7-5.5 1.6 0 3 .4 4.2 1.2"/><path d="m16.5 16 4 4M20.5 16l-4 4"/>',
+  paperclip: '<path d="m20 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4"/>',
+  external: '<path d="M14 4.5h5.5V10"/><path d="M19.5 4.5 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  alert: '<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.2M12 17.2v.1"/>',
 };
 
 function icon(name, cls = 'w-5 h-5') {
@@ -118,6 +123,9 @@ function dayDistance(iso, today = isoDay(new Date())) {
   return days <= 3 ? 'soon' : 'later';
 }
 
+/** Whole days from `iso` to today, negative for days still to come. */
+const daysAgo = (iso, today = isoDay(new Date())) => Math.round((parseDate(today) - parseDate(iso)) / 86400000);
+
 const CHIP_TONES = {
   neutral: { box: 'bg-page text-ink-soft', month: 'text-ink-faint', day: 'text-ink', wd: 'text-ink-faint' },
   today:   { box: 'bg-violet-600 text-white', month: 'text-white/80', day: 'text-white', wd: 'text-white/80' },
@@ -155,6 +163,31 @@ const actionLink = (text, tab) =>
 const empty = (text) =>
   `<p class="px-5 py-8 text-center text-sm text-ink-faint">${esc(text)}</p>`;
 
+/**
+ * Title card of a tab. The tabs that are not in the bottom bar (they open from
+ * the home shortcuts) get a back arrow on mobile.
+ */
+function tabHeader(title, right = '', below = '') {
+  const inBottomBar = ['home', 'calendar', 'homework', 'timetable'].includes(state.tab);
+  return card(`<div class="p-4">
+      <div class="flex items-center gap-2 min-h-8">
+        ${inBottomBar ? '' : `<button data-goto="home" aria-label="Torna alla home" data-icon="arrowLeft"
+          class="lg:hidden -ml-1.5 w-8 h-8 shrink-0 grid place-items-center rounded-full text-ink-soft
+                 hover:bg-page transition focus-visible:outline focus-visible:outline-2
+                 focus-visible:outline-violet-600"></button>`}
+        <h2 class="text-[17px] font-extrabold tracking-tight">${esc(title)}</h2>
+        ${right ? `<div class="ml-auto min-w-0 text-[13px] text-ink-soft text-right">${right}</div>` : ''}
+      </div>
+      ${below}
+    </div>`);
+}
+
+const shortDate = (iso, long = false) =>
+  parseDate(iso)?.toLocaleDateString('it-IT', { day: 'numeric', month: long ? 'long' : 'short' }).replace('.', '') || '';
+
+const badge = (text, tone) =>
+  `<span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ${tone}">${esc(text)}</span>`;
+
 // ------------------------------------------------------------ derived data
 // Argo field names (desMateria, datGiorno, registro...) only appear in this
 // section: everything below works on the English objects built here.
@@ -163,12 +196,23 @@ const dash = () => state.data?.dashboard || {};
 const active = (arr) => (arr || []).filter((x) => x && x.operazione !== 'D');
 
 function periods() {
-  const short = (d) => parseDate(d)?.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }).replace('.', '') || '';
+  const short = (iso) => parseDate(iso)?.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }).replace('.', '') || '';
   return (dash().listaPeriodi || []).map((p) => {
-    const from = short(p.dataInizio || p.datInizio);
-    const to = short(p.dataFine || p.datFine);
-    return { pk: p.pkPeriodo, name: p.descrizione, note: from && to ? `${from} – ${to}` : '' };
+    const start = dayOf(p.datInizio || p.dataInizio);
+    const end = dayOf(p.datFine || p.dataFine);
+    return { pk: p.pkPeriodo, name: p.descrizione, start, end, note: start && end ? `${short(start)} – ${short(end)}` : '' };
   });
+}
+
+/**
+ * The pkPeriodo on a grade does not match the one in listaPeriodi, so a day
+ * belongs to the chosen period by its dates. "Intero anno" ('*') keeps all.
+ */
+function inPeriod(day) {
+  if (state.period === '*' || !day) return true;
+  const p = periods().find((x) => x.pk === state.period);
+  if (!p?.start || !p?.end) return true;
+  return day >= p.start && day <= p.end;
 }
 
 function grades() {
@@ -179,7 +223,6 @@ function grades() {
       subject: v.desMateria || v.materiaLight?.desDescrizione || '—',
       label: v.codCodice || (Number.isFinite(v.valore) ? String(v.valore) : '—'),
       value: Number.isFinite(v.valore) && v.valore > 0 ? v.valore : null,
-      periodPk: v.pkPeriodo,
       kind: v.tipoValutazione || '',
       kindCode: String(v.tipoValutazione || v.codVotoPratico || '').toUpperCase(),
       description: v.descrizioneProva || v.desCommento || '',
@@ -197,10 +240,7 @@ function countsInAverage(g) {
   return !g.excluded;
 }
 
-function periodGrades() {
-  const all = grades();
-  return state.period === '*' ? all : all.filter((g) => g.periodPk === state.period);
-}
+const periodGrades = () => grades().filter((g) => inPeriod(g.day));
 
 /** Short djb2 hash, enough to tell two homework texts apart. */
 function shortHash(text) {
@@ -251,6 +291,71 @@ function reminders() {
     .sort((a, b) => (a.day > b.day ? 1 : -1));
 }
 
+/** Attendance events: absences ('A'), late entries ('I') and early exits ('U'). */
+function absences() {
+  return active(dash().appello)
+    .map((a) => {
+      const justified = a.giustificata === 'S' || a.giustificata === true;
+      return {
+        day: dayOf(a.data || a.datEvento),
+        kind: String(a.codEvento || '').toUpperCase(),
+        description: a.descrizione || '',
+        teacher: a.docente || '',
+        note: a.nota || '',
+        justified,
+        toJustify: Boolean(a.daGiustificare) && !justified,
+        justifiedOn: dayOf(a.dataGiustificazione),
+        reason: a.commentoGiustificazione || '',
+      };
+    })
+    .filter((a) => a.day)
+    .sort((a, b) => (a.day < b.day ? 1 : -1));
+}
+
+/**
+ * Class noticeboard and the student's own documents, newest first. Attachments
+ * go through /api/attachment, which redirects to Argo's short lived link.
+ */
+function notices() {
+  const attachment = (pk, name, personal) =>
+    ({ name, href: `/api/attachment?uid=${encodeURIComponent(pk)}${personal ? '&personal=1' : ''}` });
+  const classNotices = active(dash().bacheca).map((b) => ({
+    day: dayOf(b.data || b.datEvento),
+    text: b.messaggio || '',
+    category: b.categoria || '',
+    author: b.autore || '',
+    link: /^https?:\/\//.test(b.url || '') ? b.url : '',
+    attachments: (b.listaAllegati || []).filter((f) => f?.pk)
+      .map((f) => attachment(f.pk, f.descrizioneFile || f.nomeFile || 'Allegato')),
+    ackRequested: Boolean(b.pvRichiesta),
+    acknowledged: Boolean(b.isPresaVisione),
+    joinRequested: Boolean(b.adRichiesta),
+    joined: Boolean(b.isPresaAdesioneConfermata),
+    deadline: dayOf(b.dataScadAdesione || b.dataScadenza),
+    personal: false,
+  }));
+  const personal = active(dash().bachecaAlunno).map((b) => ({
+    day: dayOf(b.data || b.datEvento),
+    text: b.messaggio || '',
+    category: 'Per te',
+    author: '',
+    link: '',
+    attachments: b.pk && b.nomeFile ? [attachment(b.pk, b.nomeFile, true)] : [],
+    ackRequested: false,
+    acknowledged: Boolean(b.isPresaVisione),
+    joinRequested: false,
+    joined: false,
+    deadline: null,
+    personal: true,
+  }));
+  return [...classNotices, ...personal]
+    .filter((n) => n.day)
+    .sort((a, b) => (a.day < b.day ? 1 : -1));
+}
+
+/** A notice still waiting for the family: presa visione or adesione not given yet. */
+const pendingNotice = (n) => (n.ackRequested && !n.acknowledged) || (n.joinRequested && !n.joined);
+
 /** Subjects Argo knows about (grades and lessons), for the autocomplete. */
 function knownSubjects() {
   const set = new Set();
@@ -259,11 +364,15 @@ function knownSubjects() {
   return [...set].filter((s) => s && s !== '—').sort((a, b) => a.localeCompare(b, 'it'));
 }
 
-/** Average recomputed from the single grades, per subject, overall and per month. */
+/**
+ * Averages recomputed from the single grades. A subject gets the mean of its
+ * grades, the average is the mean of the subject averages (every subject
+ * weighs the same, however many grades it has), and a month works the same way.
+ */
 function computeAverages() {
   const used = periodGrades().filter(countsInAverage);
   const bySubject = new Map();
-  const byMonth = new Map();
+  const byMonth = new Map(); // month -> subject -> grade values
 
   for (const g of used) {
     if (!bySubject.has(g.subject)) bySubject.set(g.subject, { all: [], written: [], oral: [] });
@@ -273,7 +382,10 @@ function computeAverages() {
     else if (g.kindCode.startsWith('O')) group.oral.push(g.value);
 
     const month = (g.day || '').slice(0, 7);
-    if (month) byMonth.set(month, [...(byMonth.get(month) || []), g.value]);
+    if (!month) continue;
+    if (!byMonth.has(month)) byMonth.set(month, new Map());
+    const inMonth = byMonth.get(month);
+    inMonth.set(g.subject, [...(inMonth.get(g.subject) || []), g.value]);
   }
 
   const avg = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : null);
@@ -289,11 +401,12 @@ function computeAverages() {
 
   return {
     subjects,
-    overall: avg(used.map((g) => g.value)),
-    averageOfAverages: avg(subjects.map((s) => s.average)),
+    average: avg(subjects.map((s) => s.average)),
     total: used.length,
     failing: subjects.filter((s) => s.average < 6).length,
-    months: [...byMonth.entries()].sort().map(([month, values]) => ({ month, average: avg(values) })),
+    months: [...byMonth.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([month, bySubjectInMonth]) => ({ month, average: avg([...bySubjectInMonth.values()].map(avg)) })),
   };
 }
 
@@ -326,9 +439,13 @@ function subjectOptions() {
   ];
 }
 
+/** Tabs whose content depends on the period picked in the header. */
+const PERIOD_TABS = ['home', 'grades', 'average', 'absences'];
+
 /**
  * The dropdown in the header picks the period, except in the homework tab,
- * where periods change nothing and it picks the subject instead.
+ * where periods change nothing and it picks the subject instead. Tabs where
+ * neither means anything (calendar, timetable...) get no dropdown at all.
  */
 function headerMenu() {
   if (state.tab === 'homework') {
@@ -339,6 +456,7 @@ function headerMenu() {
       choose: (pk) => { state.homeworkSubject = pk; },
     };
   }
+  if (!PERIOD_TABS.includes(state.tab)) return null;
   return {
     label: 'Periodo',
     options: periodOptions(),
@@ -348,8 +466,11 @@ function headerMenu() {
 }
 
 function renderHeaderMenu() {
+  const menu = headerMenu();
+  el('header-menu-row').classList.toggle('hidden', !menu);
+  if (!menu) return closeHeaderMenu();
   const list = el('header-menu-list');
-  const { label, options, value, choose } = headerMenu();
+  const { label, options, value, choose } = menu;
   const current = options.find((o) => o.pk === value) || options.find((o) => o.pk === '*') || options[0];
   el('header-menu-label').textContent = current.name;
   list.setAttribute('aria-label', label);
@@ -475,6 +596,9 @@ const TABS = [
   { id: 'timetable', icon: 'clock', name: 'Orario' },
   { id: 'grades', icon: 'award', name: 'Voti' },
   { id: 'average', icon: 'chart', name: 'Media' },
+  { id: 'absences', icon: 'userX', name: 'Assenze' },
+  { id: 'reminders', icon: 'bell', name: 'Promemoria' },
+  { id: 'noticeboard', icon: 'megaphone', name: 'Bacheca' },
 ];
 
 /** Sidebar entries (desktop only), same tabs as the bottom bar. */
@@ -592,6 +716,9 @@ function render({ animate = true } = {}) {
     timetable: renderTimetable,
     grades: renderGrades,
     average: renderAverage,
+    absences: renderAbsences,
+    reminders: renderReminders,
+    noticeboard: renderNoticeboard,
   })[state.tab]();
 
   if (animate) {
@@ -613,8 +740,13 @@ function renderHome() {
   const todo = homework().filter((h) => h.day >= today && !h.done);
   const next = todo.slice(0, 3);
   const latest = periodGrades().slice(0, 4);
-  const tone = gradeTone(m.overall);
-  const argoAverage = dash().mediaGenerale;
+  const tone = gradeTone(m.average);
+  const periodAbsences = absences().filter((a) => inPeriod(a.day));
+  const toJustify = absences().filter((a) => a.toJustify);
+  const upcoming = reminders().filter((r) => r.day >= today);
+  const allNotices = notices();
+  const pending = allNotices.filter(pendingNotice);
+  const fresh = allNotices.filter((n) => daysAgo(n.day) <= 7);
 
   const shortcut = (tab, name, value, ic, color) => `
     <button data-goto="${tab}" class="text-left bg-white rounded-3xl shadow-card p-4 transition
@@ -622,19 +754,29 @@ function renderHome() {
         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
       <div class="w-10 h-10 rounded-2xl grid place-items-center ${color}" data-icon="${ic}"></div>
       <div class="mt-3 font-bold text-[15px]">${esc(name)}</div>
-      <div class="text-[13px] text-ink-soft">${esc(value)}</div>
+      <div class="text-[13px] text-ink-soft truncate">${esc(value)}</div>
     </button>`;
+
+  // things that need doing, only shown when there are some
+  const alerts = [
+    toJustify.length && ['absences', 'bg-rose-50 text-rose-700',
+      plural(toJustify.length, 'assenza da giustificare', 'assenze da giustificare')],
+    pending.length && ['noticeboard', 'bg-amber-50 text-amber-800',
+      plural(pending.length, 'comunicazione da confermare', 'comunicazioni da confermare')],
+    upcoming[0] && daysAgo(upcoming[0].day) >= -1 && ['reminders', 'bg-sky-50 text-sky-800',
+      `${upcoming[0].day === today ? 'Oggi' : 'Domani'}: ${upcoming[0].text}`],
+  ].filter(Boolean);
 
   el('tab-home').innerHTML = `
     <div class="lg:grid lg:grid-cols-2 lg:gap-7 lg:items-start">
     <div>
     ${card(`
       <div class="p-5 flex items-center gap-5">
-        <div>
-          <p class="text-xs font-bold tracking-wide text-ink-faint uppercase">Media generale</p>
-          <p class="text-5xl font-extrabold tracking-tight ${tone.text} mt-1">${fmtAverage(m.overall)}</p>
+        <div class="min-w-0">
+          <p class="text-xs font-bold tracking-wide text-ink-faint uppercase">Media</p>
+          <p class="text-5xl font-extrabold tracking-tight ${tone.text} mt-1">${fmtAverage(m.average)}</p>
           <p class="text-[13px] text-ink-soft mt-1">
-            calcolata su ${plural(m.total, 'voto', 'voti')} in ${plural(m.subjects.length, 'materia', 'materie')}
+            tra ${plural(m.subjects.length, 'materia', 'materie')} · ${plural(m.total, 'voto', 'voti')}
           </p>
         </div>
         <div class="ml-auto text-right flex flex-col items-end gap-2 shrink-0">
@@ -647,17 +789,28 @@ function renderHome() {
               : ''}
           <div>${actionLink('Dettaglio →', 'average')}</div>
         </div>
-      </div>
-      ${Number.isFinite(argoAverage) && argoAverage > 0 ? `
-        <p class="px-5 pb-4 -mt-1 text-xs text-ink-faint">Argo dichiara ${fmtAverage(argoAverage)}</p>` : ''}
-    `)}
+      </div>`)}
+
+    ${alerts.length ? `<div class="mt-3 space-y-2">
+      ${alerts.map(([tab, color, text]) => `
+        <button data-goto="${tab}" class="w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left
+            text-[14px] font-semibold transition hover:brightness-95 ${color}
+            focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+          <span class="min-w-0 flex-1 truncate">${esc(text)}</span>
+          ${icon('chevron', 'w-4 h-4 shrink-0 opacity-70')}
+        </button>`).join('')}
+    </div>` : ''}
 
     ${sectionTitle('Accesso rapido')}
     <div class="grid grid-cols-2 gap-3">
       ${shortcut('grades', 'Voti', plural(periodGrades().length, 'voto registrato', 'voti registrati'), 'award', 'bg-violet-100 text-violet-700')}
-      ${shortcut('homework', 'Compiti', todo.length ? plural(todo.length, 'da fare', 'da fare') : 'niente in sospeso', 'check', 'bg-amber-100 text-amber-700')}
-      ${shortcut('calendar', 'Calendario', new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long' }), 'calendar', 'bg-sky-100 text-sky-700')}
-      ${shortcut('average', 'Andamento', m.months.length ? plural(m.months.length, 'mese', 'mesi') + ' di dati' : 'nessun dato', 'chart', 'bg-emerald-100 text-emerald-700')}
+      ${shortcut('average', 'Media', m.months.length ? plural(m.months.length, 'mese', 'mesi') + ' di andamento' : 'nessun dato', 'chart', 'bg-emerald-100 text-emerald-700')}
+      ${shortcut('absences', 'Assenze', toJustify.length ? `${toJustify.length} da giustificare`
+        : plural(periodAbsences.filter((a) => a.kind === 'A').length, 'assenza', 'assenze'), 'userX', 'bg-rose-100 text-rose-700')}
+      ${shortcut('reminders', 'Promemoria', upcoming.length ? plural(upcoming.length, 'in arrivo', 'in arrivo') : 'niente in arrivo', 'bell', 'bg-sky-100 text-sky-700')}
+      ${shortcut('noticeboard', 'Bacheca', fresh.length ? plural(fresh.length, 'nuova', 'nuove')
+        : plural(allNotices.length, 'comunicazione', 'comunicazioni'), 'megaphone', 'bg-amber-100 text-amber-700')}
+      ${shortcut('homework', 'Compiti', todo.length ? plural(todo.length, 'da fare', 'da fare') : 'niente in sospeso', 'check', 'bg-indigo-100 text-indigo-700')}
     </div>
 
     </div>
@@ -1174,7 +1327,7 @@ function renderTimetable() {
         </div>
         <div class="w-px self-stretch lg:hidden ${running ? 'bg-violet-300' : 'bg-slate-200'}"></div>
         <div class="min-w-0 flex-1 lg:row-start-2">
-          <p class="font-bold text-[15px] truncate lg:text-sm">${esc(s.subject)}</p>
+          <p class="font-bold text-[15px] leading-snug line-clamp-2 break-words lg:text-sm">${esc(s.subject)}</p>
           ${due.length ? `
             <button type="button" data-open-homework
               class="mt-0.5 w-full flex items-center gap-1.5 text-left text-[12px] text-amber-700
@@ -1387,10 +1540,7 @@ function renderGrades() {
   for (const g of list) bySubject.set(g.subject, [...(bySubject.get(g.subject) || []), g]);
 
   el('tab-grades').innerHTML = `
-    ${card(`<div class="p-4 flex items-baseline gap-3">
-      <h2 class="text-[17px] font-extrabold tracking-tight">Voti</h2>
-      <p class="ml-auto text-sm text-ink-soft">${plural(list.length, 'valutazione', 'valutazioni')}</p>
-    </div>`)}
+    ${tabHeader('Voti', plural(list.length, 'valutazione', 'valutazioni'))}
     <div class="mt-3 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
       ${list.length === 0 ? card(empty('Nessun voto nel periodo selezionato.')) : ''}
       ${[...bySubject.entries()].map(([subject, items]) => {
@@ -1400,7 +1550,7 @@ function renderGrades() {
         return card(`
           <div class="p-4 flex items-center gap-3 border-b border-slate-100">
             <div class="min-w-0">
-              <p class="font-extrabold text-[15px] truncate">${esc(subject)}</p>
+              <p class="font-extrabold text-[15px] leading-snug">${esc(subject)}</p>
               <p class="text-[13px] text-ink-soft">${plural(items.length, 'voto', 'voti')}</p>
             </div>
             <span class="ml-auto shrink-0 px-3 py-1.5 rounded-2xl font-extrabold ${t.chip}">${fmtAverage(average)}</span>
@@ -1414,42 +1564,42 @@ function renderGrades() {
 
 function renderAverage() {
   const m = computeAverages();
-  const argoAverage = dash().mediaGenerale;
   const scale = (v) => Math.max(0, Math.min(100, ((v - 1) / 9) * 100));
+  const tone = gradeTone(m.average);
+  const best = m.subjects[0];
 
-  const figure = (label, value, note) => {
-    const t = gradeTone(value);
-    return `<div class="bg-white rounded-3xl shadow-card p-4">
-      <p class="text-xs font-bold uppercase tracking-wide text-ink-faint">${esc(label)}</p>
-      <p class="text-3xl font-extrabold tracking-tight mt-1 ${value == null ? 'text-ink-faint' : t.text}">${fmtAverage(value)}</p>
-      <p class="text-[13px] text-ink-soft mt-0.5">${esc(note)}</p>
-    </div>`;
-  };
+  const toggle = `
+    <button type="button" id="count-all-toggle" role="switch" aria-checked="${state.averageAllGrades}"
+      class="mt-3 w-full flex items-center gap-2.5 text-[13px] font-semibold text-ink-soft group">
+      <span class="mr-auto">Conta anche i voti esclusi dalla media</span>
+      <span class="relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0
+        ${state.averageAllGrades ? 'bg-emerald-500' : 'bg-slate-400 group-hover:bg-slate-500'}">
+        <span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-[0_1px_3px_rgba(22,26,43,.35)]
+          transition-transform duration-200 ease-out ${state.averageAllGrades ? 'translate-x-5' : ''}"></span>
+      </span>
+    </button>`;
 
   el('tab-average').innerHTML = `
-    ${card(`<div class="p-4 flex items-center gap-3">
-      <div>
-        <h2 class="text-[17px] font-extrabold tracking-tight">Media</h2>
-        <p class="text-[13px] text-ink-soft">Ricalcolata dai singoli voti</p>
-      </div>
-      <button type="button" id="count-all-toggle" role="switch" aria-checked="${state.averageAllGrades}"
-        class="ml-auto flex items-center gap-2.5 text-[13px] font-semibold text-ink-soft group">
-        <span>conta tutti i voti</span>
-        <span class="relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0
-          ${state.averageAllGrades ? 'bg-emerald-500' : 'bg-slate-400 group-hover:bg-slate-500'}">
-          <span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-[0_1px_3px_rgba(22,26,43,.35)]
-            transition-transform duration-200 ease-out ${state.averageAllGrades ? 'translate-x-5' : ''}"></span>
-        </span>
-      </button>
-    </div>`)}
+    ${tabHeader('Media', '', toggle)}
 
-    <div class="grid grid-cols-2 gap-3 mt-3">
-      ${figure('Generale', m.overall, `su ${plural(m.total, 'voto', 'voti')}`)}
-      ${figure('Media delle materie', m.averageOfAverages, plural(m.subjects.length, 'materia', 'materie'))}
+    ${card(`<div class="p-5 flex items-center gap-4">
+      <div class="min-w-0">
+        <p class="text-xs font-bold uppercase tracking-wide text-ink-faint">Media delle materie</p>
+        <p class="text-5xl font-extrabold tracking-tight mt-1 ${m.average == null ? 'text-ink-faint' : tone.text}">${fmtAverage(m.average)}</p>
+        <p class="text-[13px] text-ink-soft mt-1">
+          ${plural(m.subjects.length, 'materia', 'materie')} · ${plural(m.total, 'voto', 'voti')}
+        </p>
+      </div>
+      <div class="ml-auto shrink-0 text-right space-y-1.5">
+        ${m.subjects.length ? (m.failing
+          ? badge(plural(m.failing, 'materia sotto il 6', 'materie sotto il 6'), 'bg-rose-50 text-rose-700')
+          : badge('nessuna insufficienza', 'bg-emerald-50 text-emerald-700')) : ''}
+        ${best ? `<p class="text-xs text-ink-faint">migliore ${fmtAverage(best.average)}</p>` : ''}
+      </div>
     </div>
-    ${Number.isFinite(argoAverage) && argoAverage > 0
-      ? `<p class="text-xs text-ink-faint mt-2 px-1">Argo dichiara ${fmtAverage(argoAverage)}.</p>`
-      : `<p class="text-xs text-ink-faint mt-2 px-1">La tua scuola non espone la media: questi numeri sono calcolati qui.</p>`}
+    <p class="px-5 pb-4 -mt-1 text-xs text-ink-faint">
+      Ogni materia pesa uguale, qualunque sia il numero di voti.
+    </p>`, 'mt-3')}
 
     <div class="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
     <div>
@@ -1457,14 +1607,18 @@ function renderAverage() {
     ${card(m.subjects.length ? `<div class="p-4 space-y-4">
       ${m.subjects.map((x) => {
         const t = gradeTone(x.average);
+        const detail = [
+          x.written ? 'scritto ' + fmtAverage(x.written) : '',
+          x.oral ? 'orale ' + fmtAverage(x.oral) : '',
+          plural(x.count, 'voto', 'voti'),
+        ].filter(Boolean).join(' · ');
         return `<div>
-          <div class="flex items-baseline gap-2 mb-1.5">
-            <span class="font-bold text-[15px] truncate">${esc(x.subject)}</span>
-            <span class="ml-auto shrink-0 text-xs text-ink-faint">
-              ${x.written ? 'S ' + fmtAverage(x.written) : ''}${x.written && x.oral ? ' · ' : ''}${x.oral ? 'O ' + fmtAverage(x.oral) : ''}
-              ${x.written || x.oral ? ' · ' : ''}${plural(x.count, 'voto', 'voti')}
-            </span>
-            <span class="shrink-0 font-extrabold tabular-nums ${t.text}">${fmtAverage(x.average)}</span>
+          <div class="flex items-start gap-3 mb-1.5">
+            <div class="min-w-0 flex-1">
+              <p class="font-bold text-[14px] leading-snug">${esc(x.subject)}</p>
+              <p class="text-xs text-ink-faint mt-0.5">${detail}</p>
+            </div>
+            <span class="shrink-0 text-lg font-extrabold tabular-nums leading-tight ${t.text}">${fmtAverage(x.average)}</span>
           </div>
           <div class="h-2 rounded-full bg-page overflow-hidden">
             <div class="h-full rounded-full ${t.bar}" style="width:${scale(x.average)}%"></div>
@@ -1491,11 +1645,170 @@ function renderAverage() {
           </div>`;
         }).join('')}
       </div>
+      <p class="text-xs text-ink-faint mt-3">Per ogni mese, la media delle materie con voti in quel mese.</p>
     </div>` : empty('Servono voti in almeno un mese.'))}
     </div>
     </div>`;
 
   el('count-all-toggle').onclick = () => { state.averageAllGrades = !state.averageAllGrades; render(); };
+}
+
+// --- absences
+
+const ABSENCE_KINDS = {
+  A: { name: 'Assenza', plural: 'Assenze', tone: 'bg-rose-50 text-rose-700' },
+  I: { name: 'Ingresso in ritardo', plural: 'Ritardi', tone: 'bg-amber-50 text-amber-800' },
+  U: { name: 'Uscita anticipata', plural: 'Uscite', tone: 'bg-sky-50 text-sky-800' },
+};
+
+function renderAbsences() {
+  const list = absences().filter((a) => inPeriod(a.day));
+  const toJustify = absences().filter((a) => a.toJustify);
+  const count = (kind) => list.filter((a) => a.kind === kind).length;
+
+  const stat = (kind) => `
+    <div class="rounded-2xl px-3 py-2.5 ${ABSENCE_KINDS[kind].tone}">
+      <p class="text-2xl font-extrabold tabular-nums leading-tight">${count(kind)}</p>
+      <p class="text-[12px] font-semibold opacity-80">${ABSENCE_KINDS[kind].plural}</p>
+    </div>`;
+
+  const row = (a) => {
+    const kind = ABSENCE_KINDS[a.kind];
+    const title = kind?.name || a.description || 'Evento';
+    const details = [
+      a.teacher,
+      a.justified && a.justifiedOn ? `giustificata il ${shortDate(a.justifiedOn, true)}` : '',
+    ].filter(Boolean).join(' · ');
+    return `
+      <li class="p-4 flex gap-3.5 items-start">
+        ${dateChip(a.day)}
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p class="font-bold text-[15px]">${esc(title)}</p>
+            ${a.toJustify ? badge('da giustificare', 'bg-rose-100 text-rose-700')
+              : a.justified ? badge('giustificata', 'bg-emerald-50 text-emerald-700') : ''}
+          </div>
+          ${a.description && a.description !== title ? `<p class="text-sm text-ink-soft mt-0.5">${esc(a.description)}</p>` : ''}
+          ${a.reason ? `<p class="text-sm text-ink-soft mt-0.5">Motivo: ${esc(a.reason)}</p>` : ''}
+          ${a.note ? `<p class="text-sm text-ink-soft mt-0.5 whitespace-pre-wrap">${esc(a.note)}</p>` : ''}
+          ${details ? `<p class="text-xs text-ink-faint mt-1">${esc(details)}</p>` : ''}
+        </div>
+      </li>`;
+  };
+
+  el('tab-absences').innerHTML = `
+    ${tabHeader('Assenze', list.length ? plural(list.length, 'evento', 'eventi') : '',
+      `<div class="mt-3 grid grid-cols-3 gap-2">${stat('A')}${stat('I')}${stat('U')}</div>`)}
+    ${toJustify.length ? `
+      <div class="mt-3 flex items-start gap-3 rounded-2xl bg-rose-50 text-rose-800 px-4 py-3">
+        ${icon('alert', 'w-5 h-5 shrink-0 mt-0.5')}
+        <p class="text-[14px]"><span class="font-bold">${plural(toJustify.length, 'evento da giustificare', 'eventi da giustificare')}.</span>
+          Si giustifica dall'app Argo didUP Famiglia.</p>
+      </div>` : ''}
+    <div class="mt-3">
+      ${card(list.length ? `<ul class="divide-y divide-slate-100 lg:grid lg:grid-cols-2 lg:divide-y-0">
+        ${list.map(row).join('')}</ul>` : empty('Nessuna assenza, ritardo o uscita in questo periodo.'))}
+    </div>`;
+}
+
+// --- reminders
+
+function renderReminders() {
+  const today = isoDay(new Date());
+  const all = reminders();
+  const upcoming = all.filter((r) => r.day >= today);
+  const past = all.filter((r) => r.day < today).reverse();
+
+  const row = (r) => `
+    <li class="p-4 flex gap-3.5 items-start">
+      ${dateChip(r.day, dayDistance(r.day, today))}
+      <div class="min-w-0 flex-1">
+        <p class="text-[15px] text-ink whitespace-pre-wrap break-words">${esc(r.text)}</p>
+        ${r.teacher || r.time ? `<p class="text-xs text-ink-faint mt-1">${esc([r.teacher, r.time].filter(Boolean).join(' · '))}</p>` : ''}
+      </div>
+    </li>`;
+
+  el('tab-reminders').innerHTML = `
+    ${tabHeader('Promemoria', upcoming.length ? plural(upcoming.length, 'in arrivo', 'in arrivo') : '')}
+    <div class="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+      <div>
+        ${sectionTitle('In arrivo')}
+        ${card(upcoming.length ? `<ul class="divide-y divide-slate-100">${upcoming.map(row).join('')}</ul>`
+          : empty('Nessun promemoria in arrivo.'))}
+      </div>
+      <div>
+        ${sectionTitle('Passati')}
+        ${card(past.length ? `<ul class="divide-y divide-slate-100">${past.map(row).join('')}</ul>`
+          : empty('Ancora nessun promemoria passato.'))}
+      </div>
+    </div>`;
+}
+
+// --- noticeboard
+
+function renderNoticeboard() {
+  const all = notices();
+  const pending = all.filter(pendingNotice);
+  const longText = (t) => t.length > 220 || t.split('\n').length > 4;
+
+  const status = (n) => [
+    n.ackRequested && (n.acknowledged
+      ? badge('presa visione confermata', 'bg-emerald-50 text-emerald-700')
+      : badge('presa visione da confermare', 'bg-amber-100 text-amber-800')),
+    n.joinRequested && (n.joined
+      ? badge('adesione confermata', 'bg-emerald-50 text-emerald-700')
+      : badge(n.deadline ? `adesione entro il ${shortDate(n.deadline, true)}` : 'adesione da confermare', 'bg-amber-100 text-amber-800')),
+  ].filter(Boolean).join('');
+
+  const item = (n) => `
+    <li class="p-4 flex gap-3.5 items-start">
+      ${dateChip(n.day, daysAgo(n.day) <= 7 ? 'later' : 'neutral')}
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          ${n.category ? `<p class="text-[11px] font-bold uppercase tracking-wide ${n.personal ? 'text-violet-700' : 'text-ink-faint'}">${esc(n.category)}</p>` : ''}
+          ${daysAgo(n.day) <= 7 ? badge('nuova', 'bg-sky-100 text-sky-800') : ''}
+        </div>
+        <p class="notice-text mt-1 text-[15px] text-ink whitespace-pre-wrap break-words ${longText(n.text) ? 'line-clamp-4' : ''}">${esc(n.text)}</p>
+        ${longText(n.text) ? `<button type="button" data-expand class="mt-1 text-[13px] font-semibold text-violet-600 hover:text-violet-700">Leggi tutto</button>` : ''}
+        ${n.attachments.length || n.link ? `<div class="mt-2.5 flex flex-col gap-1.5">
+          ${n.attachments.map((f) => `
+            <a href="${esc(f.href)}" target="_blank" rel="noopener"
+              class="flex items-center gap-2 rounded-xl bg-page px-3 py-2 text-[13px] font-semibold text-ink-soft
+                hover:bg-slate-200/70 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600">
+              ${icon('paperclip', 'w-4 h-4 shrink-0 text-ink-faint')}<span class="min-w-0 truncate">${esc(f.name)}</span>
+            </a>`).join('')}
+          ${n.link ? `
+            <a href="${esc(n.link)}" target="_blank" rel="noopener noreferrer"
+              class="flex items-center gap-2 rounded-xl bg-page px-3 py-2 text-[13px] font-semibold text-ink-soft
+                hover:bg-slate-200/70 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600">
+              ${icon('external', 'w-4 h-4 shrink-0 text-ink-faint')}<span class="min-w-0 truncate">Apri il link</span>
+            </a>` : ''}
+        </div>` : ''}
+        ${status(n) ? `<div class="mt-2.5 flex flex-wrap gap-1.5">${status(n)}</div>` : ''}
+        ${n.author ? `<p class="text-xs text-ink-faint mt-2">${esc(n.author)}</p>` : ''}
+      </div>
+    </li>`;
+
+  el('tab-noticeboard').innerHTML = `
+    ${tabHeader('Bacheca', all.length ? plural(all.length, 'comunicazione', 'comunicazioni') : '')}
+    ${pending.length ? `
+      <div class="mt-3 flex items-start gap-3 rounded-2xl bg-amber-50 text-amber-900 px-4 py-3">
+        ${icon('alert', 'w-5 h-5 shrink-0 mt-0.5')}
+        <p class="text-[14px]"><span class="font-bold">${plural(pending.length, 'comunicazione da confermare', 'comunicazioni da confermare')}.</span>
+          La conferma si dà dall'app Argo didUP Famiglia.</p>
+      </div>` : ''}
+    <div class="mt-3">
+      ${card(all.length ? `<ul class="divide-y divide-slate-100">${all.map(item).join('')}</ul>`
+        : empty('Nessuna comunicazione in bacheca.'))}
+    </div>`;
+
+  for (const b of el('tab-noticeboard').querySelectorAll('[data-expand]')) {
+    b.onclick = () => {
+      const text = b.previousElementSibling;
+      const open = text.classList.toggle('line-clamp-4');
+      b.textContent = open ? 'Leggi tutto' : 'Mostra meno';
+    };
+  }
 }
 
 // -------------------------------------------------------------------- init

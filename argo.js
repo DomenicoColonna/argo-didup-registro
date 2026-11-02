@@ -149,8 +149,12 @@ async function exchangeToken({ code, codeVerifier }) {
   return { ...data, expireDate };
 }
 
-/** Generic call to the appfamiglia API (POST when there is a body, GET otherwise). */
-async function apiRequest(session, endpoint, body) {
+/**
+ * Generic call to the appfamiglia API (POST when there is a body, GET otherwise).
+ * A few endpoints answer with their fields at the top level instead of under
+ * `data`, those pass `{ needsData: false }`.
+ */
+async function apiRequest(session, endpoint, body, { needsData = true } = {}) {
   const headers = {
     accept: 'application/json',
     'argo-client-version': CLIENT_VERSION,
@@ -179,8 +183,8 @@ async function apiRequest(session, endpoint, body) {
   if (json.success === false) throw new Error(json.msg || `Errore su /${endpoint}`);
   // Some refusals (an outdated argo-client-version above all) come back as a
   // bare message with no data at all, and no success flag to go with it.
-  if (json.data === undefined && json.msg) throw new Error(json.msg);
-  if (json.data === undefined) throw new Error(`Risposta senza dati da /${endpoint} (HTTP ${res.status})`);
+  if (needsData && json.data === undefined && json.msg) throw new Error(json.msg);
+  if (needsData && json.data === undefined) throw new Error(`Risposta senza dati da /${endpoint} (HTTP ${res.status})`);
   return json;
 }
 
@@ -232,6 +236,19 @@ async function loadDashboard(session) {
   return session.dashboard;
 }
 
+/**
+ * Short lived download link of a noticeboard attachment. `uid` is the pk of the
+ * attachment for the class noticeboard (bacheca), the pk of the item itself for
+ * the student's own one (bachecaAlunno).
+ */
+async function attachmentUrl(session, uid, personal) {
+  const res = personal
+    ? await apiRequest(session, 'downloadallegatobachecaalunno', { uid, pkScheda: session.profile.scheda?.pk }, { needsData: false })
+    : await apiRequest(session, 'downloadallegatobacheca', { uid }, { needsData: false });
+  if (!res.url) throw new Error(res.msg || 'Allegato non disponibile');
+  return res.url;
+}
+
 /** Full login: token, then login, profile and dashboard. */
 async function fullLogin(credentials, onStep = () => {}) {
   const session = {};
@@ -258,4 +275,4 @@ async function fullLogin(credentials, onStep = () => {}) {
   return session;
 }
 
-module.exports = { fullLogin, loadDashboard, refreshIfNeeded, apiRequest, formatDate, CLIENT_VERSION };
+module.exports = { fullLogin, loadDashboard, refreshIfNeeded, apiRequest, attachmentUrl, formatDate, CLIENT_VERSION };

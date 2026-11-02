@@ -1,8 +1,9 @@
 # Argo didUP register
 
 A small personal web app that reads data from didUP Famiglia through the same
-API the official app uses. It shows grades, homework, a monthly calendar and an
-average computed locally (my school turned the official one off).
+API the official app uses. It shows grades, homework, a monthly calendar,
+absences, reminders, the notice board and an average computed locally (my
+school turned the official one off).
 
 ## Running it
 
@@ -39,10 +40,17 @@ the call goes through: only the minimum matters, the major must stay at 1.
 cannot call it directly. The server keeps sessions and serves `public/`.
 
 `public/` is the UI, plain HTML and JS with Tailwind from the CDN. Home with the
-average and upcoming events, monthly calendar, homework, grades per subject,
-averages. A tab can also be opened through the query string, for example
-`?tab=grades` (tabs: `home`, `calendar`, `homework`, `timetable`, `grades`,
-`average`).
+average, what needs doing and upcoming events, monthly calendar, homework,
+grades per subject, averages, absences, reminders and the notice board. A tab
+can also be opened through the query string, for example `?tab=grades` (tabs:
+`home`, `calendar`, `homework`, `timetable`, `grades`, `average`, `absences`,
+`reminders`, `noticeboard`). On mobile the bottom bar holds the first four, the
+others open from the home shortcuts and have a back arrow.
+
+Notice board attachments open through `/api/attachment?uid=<pk>` (plus
+`&personal=1` for the student's own documents), which asks Argo for a short
+lived link (`downloadallegatobacheca` or `downloadallegatobachecaalunno`) and
+redirects to it.
 
 Credentials are never written to disk, they are only used once to get a token.
 Tokens, profile and downloaded data go to `data/sessions.json` (mode 600,
@@ -154,9 +162,15 @@ A grade counts when it has a numeric value above 0 and Argo does not exclude it
 media" in the list, and the "conta tutti i voti" switch in the Media tab lets
 you compare the two versions.
 
-The app shows the overall average (mean of every grade), the mean of the subject
-averages, one average per subject split into written and oral, and a monthly
-trend.
+Each subject gets the mean of its grades, and the average is the mean of the
+subject averages, so every subject weighs the same however many grades it has.
+There is no overall mean of every grade. The monthly trend works the same way,
+one mean per subject inside the month. The app also shows one average per
+subject split into written and oral.
+
+The period picked in the header filters by its dates (`datInizio` and `datFine`
+in `listaPeriodi`), because the `pkPeriodo` on a grade does not match the one of
+the period.
 
 ## Useful endpoints (for later)
 

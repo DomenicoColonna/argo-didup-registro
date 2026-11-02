@@ -7,7 +7,7 @@
  */
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
-const { fullLogin, loadDashboard, refreshIfNeeded } = require('../../argo');
+const { fullLogin, loadDashboard, refreshIfNeeded, attachmentUrl } = require('../../argo');
 const store = require('../../store');
 
 const COOKIE = 'sid';
@@ -151,6 +151,21 @@ exports.handler = async (event) => {
         return reply(200, { timetable: await store.saveTimetable(pk, timetable) });
       }
       return reply(405, { error: 'Metodo non ammesso' });
+    }
+
+    // noticeboard attachment: a redirect to Argo's short lived link, opened by a plain <a>
+    if (route === 'attachment' && method === 'GET') {
+      const cookie = cookieOf(event);
+      const session = cookie && open(cookie);
+      if (!session) return reply(401, { error: 'Non autenticato' });
+      const uid = event.queryStringParameters?.uid || '';
+      if (!uid || uid.length > 300) return reply(400, { error: 'Allegato non valido' });
+      const before = session.token.access_token;
+      await refreshIfNeeded(session);
+      const link = await attachmentUrl(session, uid, event.queryStringParameters?.personal === '1');
+      const headers = { location: link, 'cache-control': 'no-store' };
+      if (session.token.access_token !== before) headers['set-cookie'] = setCookie(seal(session));
+      return { statusCode: 302, headers, body: '' };
     }
 
     if (route === 'logout' && method === 'POST') return reply(200, { ok: true }, setCookie('', 0));

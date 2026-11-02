@@ -7,8 +7,8 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 
 - `argo.js` API client (OAuth2 PKCE login, token refresh, `apiRequest`)
 - `server.js` HTTP server on port 3000, `/api/login`, `/api/data`, `/api/logout`,
-  `/api/homework`, `/api/timetable`, static files from `public/`, sessions in
-  `data/sessions.json`
+  `/api/homework`, `/api/timetable`, `/api/attachment` (redirect to a notice board
+  attachment), static files from `public/`, sessions in `data/sessions.json`
 - `store.js` homework done flags and notes plus the weekly timetable, Supabase
   (`SUPABASE_URL` and `SUPABASE_SERVICE_KEY`) or `data/*.json` on the VPS; the
   tables and the `keepalive_ping()` function are in `supabase/schema.sql`
@@ -26,7 +26,10 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 - The mobile layout is final. Do not touch it. Desktop only changes go behind
   the `lg:` breakpoint.
 - Averages are computed locally, see `computeAverages` in `public/app.js`. A grade
-  counts unless `numMedia === 0` or `faMenoMedia === 'S'`.
+  counts unless `numMedia === 0` or `faMenoMedia === 'S'`. The average is the mean
+  of the subject averages, there is no overall mean of every grade.
+- Periods filter by their dates (`inPeriod`), the `pkPeriodo` on grades does not
+  match the one in `listaPeriodi`.
 - The calendar only shows September to June of the current school year.
 - Homework has no id from Argo: `homeworkKey` (due day, subject, text hash)
   is the key of the saved state. Changing its output orphans everything already saved.
