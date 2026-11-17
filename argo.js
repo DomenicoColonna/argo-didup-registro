@@ -73,6 +73,28 @@ async function hop(url, { method = 'GET', body, headers = {}, jar, maxRedirects 
   }
 }
 
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  agrave: 'à', egrave: 'è', eacute: 'é', igrave: 'ì', ograve: 'ò', ugrave: 'ù', Egrave: 'È' };
+
+/**
+ * Text of the error box on Argo's login page, empty when there is none. The
+ * page also carries a hidden warning about the device clock (display:none),
+ * which comes first and has to be skipped.
+ */
+function loginPageError(html) {
+  for (const m of html.matchAll(/<div\b([^>]*\bclass="[^"]*\b(?:alert|error)\b[^"]*"[^>]*)>([\s\S]{0,800}?)<\/div>/gi)) {
+    if (/display\s*:\s*none/i.test(m[1])) continue;
+    const text = m[2]
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&(#\d+|[a-z]+);/gi, (all, e) =>
+        e[0] === '#' ? String.fromCharCode(Number(e.slice(1))) : ENTITIES[e] ?? all)
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text) return text.slice(0, 200);
+  }
+  return '';
+}
+
 /**
  * SSO login, returns the authorization code.
  * @param onStep optional callback, called at every step (useful for debugging)
@@ -117,9 +139,8 @@ async function getAuthCode({ schoolCode, username, password }, onStep = () => {}
   onStep('sso/login', { status: second.res.status, location: second.location, url: second.url });
 
   if (!second.location) {
-    const html = await second.res.text().catch(() => '');
-    const err = (html.match(/class="[^"]*(?:error|alert)[^"]*"[^>]*>\s*([^<]{3,200})/i) || [])[1];
-    throw new Error(err ? `Argo risponde: ${err.trim()}` : 'Login rifiutato da Argo (nessun redirect)');
+    const err = loginPageError(await second.res.text().catch(() => ''));
+    throw new Error(err ? `Argo risponde: ${err}` : 'Login rifiutato da Argo (nessun redirect)');
   }
   const callback = new URL(second.location);
   const code = callback.searchParams.get('code');
