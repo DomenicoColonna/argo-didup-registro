@@ -305,7 +305,9 @@ function reminders() {
     .map((p) => ({
       text: p.desAnnotazioni || '',
       teacher: p.docente || '',
-      time: [p.oraInizio, p.oraFine].filter(Boolean).join('–'),
+      // 00:00 to 00:00 is how Argo marks a reminder for the whole day
+      time: p.oraInizio && !(p.oraInizio === '00:00' && (p.oraFine || '00:00') === '00:00')
+        ? [p.oraInizio, p.oraFine].filter(Boolean).join('–') : '',
       day: dayOf(p.datGiorno),
     }))
     .sort((a, b) => (a.day > b.day ? 1 : -1));
@@ -1093,11 +1095,10 @@ function renderHomework() {
       ${Object.entries(filters).map(([id, f]) => segment('data-filter', id, f.name, current === f)).join('')}
     </div>
     ${localOnlyNote('Fatti e note restano')}
-    <div id="homework-list" class="mt-4 lg:columns-2 lg:gap-x-4
-        ${slideClass(state.homeworkSlide)}">
+    <div id="homework-list" class="mt-4 lg:max-w-2xl ${slideClass(state.homeworkSlide)}">
       ${byDay.size === 0 ? empty(current.empty) : ''}
       ${[...byDay.entries()].map(([day, items]) => `
-        <ul class="mb-3 ${LIST} break-inside-avoid">
+        <ul class="mb-3 ${LIST}">
           ${items.map((h, i) => `
             <li class="py-3.5 flex gap-3.5 items-start">
               ${i === 0 ? dateChip(day, dayDistance(day, today)) : '<div class="w-12 shrink-0"></div>'}
@@ -1993,17 +1994,13 @@ function renderReminders() {
   setHeader('Promemoria', upcoming.length ? plural(upcoming.length, 'in arrivo', 'in arrivo') : '');
 
   el('tab-reminders').innerHTML = `
-    <div class="lg:grid lg:grid-cols-2 lg:gap-x-4 lg:items-start">
-      <div>
-        ${sectionTitle('In arrivo', '', 'mt-0')}
-        ${upcoming.length ? `<ul class="${LIST}">${upcoming.map(row).join('')}</ul>`
-          : empty('Nessun promemoria in arrivo.')}
-      </div>
-      <div>
-        ${sectionTitle('Passati', '', 'lg:mt-0')}
-        ${past.length ? `<ul class="${LIST}">${past.map(row).join('')}</ul>`
-          : empty('Ancora nessun promemoria passato.')}
-      </div>
+    <div class="lg:max-w-2xl">
+      ${sectionTitle('In arrivo', '', 'mt-0')}
+      ${upcoming.length ? `<ul class="${LIST}">${upcoming.map(row).join('')}</ul>`
+        : empty('Nessun promemoria in arrivo.')}
+      ${sectionTitle('Passati')}
+      ${past.length ? `<ul class="${LIST}">${past.map(row).join('')}</ul>`
+        : empty('Ancora nessun promemoria passato.')}
     </div>`;
 }
 
