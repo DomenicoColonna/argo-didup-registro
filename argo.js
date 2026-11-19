@@ -96,6 +96,23 @@ function loginPageError(html) {
 }
 
 /**
+ * Short description of a login page with no error box, so the message says
+ * what Argo wanted instead (a password change, a consent...): its path, the
+ * headings other than the app name and the ids of its forms.
+ */
+function describePage(html, url) {
+  const clean = (t) => t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const headings = [...html.matchAll(/<(?:title|h[1-4])\b[^>]*>([\s\S]{0,200}?)<\/(?:title|h[1-4])>/gi)]
+    .map((m) => clean(m[1]))
+    .filter((t) => t && !/^(didUP Famiglia|Accedi con Argo Software)$/i.test(t));
+  const forms = [...html.matchAll(/<form\b[^>]*\bid="([^"]+)"/gi)].map((m) => m[1]);
+  let path = '';
+  try { path = new URL(url).pathname; } catch { /* keep it empty */ }
+  return [path, [...new Set(headings)].slice(0, 3).join(' · '), forms.length ? `moduli: ${forms.join(', ')}` : '']
+    .filter(Boolean).join(' · ').slice(0, 300);
+}
+
+/**
  * SSO login, returns the authorization code.
  * @param onStep optional callback, called at every step (useful for debugging)
  */
@@ -133,14 +150,20 @@ async function getAuthCode({ schoolCode, username, password }, onStep = () => {}
       famiglia_customer_code: schoolCode,
       login: 'true',
       password,
+      prefill: 'false',
+      remember_me: 'false',
       username,
     }).toString(),
   });
   onStep('sso/login', { status: second.res.status, location: second.location, url: second.url });
 
   if (!second.location) {
-    const err = loginPageError(await second.res.text().catch(() => ''));
-    throw new Error(err ? `Argo risponde: ${err}` : 'Login rifiutato da Argo (nessun redirect)');
+    const html = await second.res.text().catch(() => '');
+    const err = loginPageError(html);
+    if (err) throw new Error(`Argo risponde: ${err}`);
+    const page = describePage(html, second.url);
+    console.error('unexpected Argo login page:', page);
+    throw new Error(`Argo ha mostrato una pagina inattesa (${page})`);
   }
   const callback = new URL(second.location);
   const code = callback.searchParams.get('code');
