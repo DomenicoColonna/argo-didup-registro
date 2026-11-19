@@ -95,6 +95,29 @@ function loginPageError(html) {
   return '';
 }
 
+/** HTML and script escapes undone, so the URLs in a page can be read as they are. */
+const unescapeUrls = (html) => html
+  .replace(/&amp;|&#0*38;|\\u0026|\\x26/gi, '&')
+  .replace(/&#x2F;|&#0*47;|\\u002F|\\\//gi, '/')
+  .replace(/&#x3A;|&#0*58;|\\u003A/gi, ':')
+  .replace(/&#x3D;|&#0*61;|\\u003D/gi, '=');
+
+/**
+ * Where a consent page sends the browser next: the app's own redirect with
+ * the code, a consent_verifier link back to auth.portaleargo.it, or a meta
+ * refresh. Null when the page has none of them.
+ */
+function consentRedirect(html, base) {
+  const text = unescapeUrls(html);
+  const appLink = text.match(new RegExp(`${REDIRECT_URI.replace(/[.:/]/g, '\\$&')}[^"'\\s<>\\\\]*`));
+  if (appLink) return appLink[0];
+  const verifier = text.match(/(?:https?:\/\/[^"'\s<>\\]*|\/[^"'\s<>\\]*)[?&]consent_verifier=[^"'\s<>\\]*/);
+  if (verifier) return new URL(verifier[0], base).toString();
+  const refresh = text.match(/http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=([^"'>]+)/i);
+  if (refresh) return new URL(refresh[1].trim(), base).toString();
+  return null;
+}
+
 /**
  * Short description of a login page with no error box, so the message says
  * what Argo wanted instead (a password change, a consent...): its path, the
@@ -106,10 +129,19 @@ function describePage(html, url) {
     .map((m) => clean(m[1]))
     .filter((t) => t && !/^(didUP Famiglia|Accedi con Argo Software)$/i.test(t));
   const forms = [...html.matchAll(/<form\b[^>]*\bid="([^"]+)"/gi)].map((m) => m[1]);
+  // where the page can go next (links, form actions, script redirects), query values cut short
+  const targets = [...unescapeUrls(html).matchAll(/(?:href|action|location(?:\.href)?\s*=|replace\()\s*=?\s*["']([^"']{2,300})["']/gi)]
+    .map((m) => m[1])
+    .filter((t) => !/\.(?:css|js|png|svg|ico|jpe?g|woff2?)(?:\?|$)|^#|^javascript:|passwordreset/i.test(t))
+    .map((t) => t.replace(/=([^&]{4})[^&]*/g, '=$1…'));
   let path = '';
   try { path = new URL(url).pathname; } catch { /* keep it empty */ }
-  return [path, [...new Set(headings)].slice(0, 3).join(' · '), forms.length ? `moduli: ${forms.join(', ')}` : '']
-    .filter(Boolean).join(' · ').slice(0, 300);
+  return [
+    path,
+    [...new Set(headings)].slice(0, 3).join(' · '),
+    forms.length ? `moduli: ${forms.join(', ')}` : '',
+    targets.length ? `link: ${[...new Set(targets)].slice(0, 4).join(' ')}` : '',
+  ].filter(Boolean).join(' · ').slice(0, 500);
 }
 
 /**
@@ -157,15 +189,27 @@ async function getAuthCode({ schoolCode, username, password }, onStep = () => {}
   });
   onStep('sso/login', { status: second.res.status, location: second.location, url: second.url });
 
-  if (!second.location) {
-    const html = await second.res.text().catch(() => '');
-    const err = loginPageError(html);
-    if (err) throw new Error(`Argo risponde: ${err}`);
-    const page = describePage(html, second.url);
-    console.error('unexpected Argo login page:', page);
-    throw new Error(`Argo ha mostrato una pagina inattesa (${page})`);
+  let { res, location, url } = second;
+  if (!location) {
+    const html = await res.text().catch(() => '');
+    // A successful login can end on a consent page ("Accesso completato") that
+    // moves on with a link or a script instead of a redirect
+    const next = consentRedirect(html, url);
+    if (next) {
+      onStep('sso/consent', { url, next: next.split('?')[0] });
+      if (next.startsWith('http')) ({ res, location, url } = await hop(next, { jar, maxRedirects: 5 }));
+      else location = next;
+    } else {
+      const err = loginPageError(html);
+      if (err) throw new Error(`Argo risponde: ${err}`);
+    }
+    if (!location) {
+      const page = describePage(next ? await res.text().catch(() => '') : html, url);
+      console.error('unexpected Argo login page:', page);
+      throw new Error(`Argo ha mostrato una pagina inattesa (${page})`);
+    }
   }
-  const callback = new URL(second.location);
+  const callback = new URL(location);
   const code = callback.searchParams.get('code');
   if (!code) {
     const argoError = callback.searchParams.get('error_description') || callback.searchParams.get('error');
