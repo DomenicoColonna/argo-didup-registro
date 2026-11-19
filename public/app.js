@@ -8,7 +8,6 @@ const state = {
   selectedDay: isoDay(new Date()),
   homeworkFilter: 'upcoming', // 'upcoming' | 'all' | 'todo' | 'done'
   homeworkSubject: '*',   // subject picked in the header menu of the homework tab, '*' is all of them
-  averageAllGrades: false,
   homeworkState: {},      // homework key -> { done, note }, see loadSavedState
   timetable: null,        // { mon: [{ start, end, subject }], ... fri }, see loadSavedState
   timetableDay: null,     // day shown on mobile, reset on every visit, see renderTimetable
@@ -27,8 +26,6 @@ const ICON_PATHS = {
   home: '<path d="M3.5 10.6 12 3.8l8.5 6.8V19a1.5 1.5 0 0 1-1.5 1.5h-4.2V15H9.2v5.5H5A1.5 1.5 0 0 1 3.5 19z"/>',
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/>',
   check: '<rect x="5" y="4.5" width="14" height="16" rx="3"/><path d="M9.5 3.5h5v3h-5z"/><path d="M9 13l2 2 4-4"/>',
-  award: '<circle cx="12" cy="9" r="5.2"/><path d="M8.4 13.4 7.2 21l4.8-2.4L16.8 21l-1.2-7.6"/>',
-  chart: '<path d="M4 19.5V12M10 19.5V5M16 19.5v-5.5"/><path d="M2.5 21.5h19"/>',
   refresh: '<path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5V10H14"/>',
   logout: '<path d="M9.5 21H6a2.5 2.5 0 0 1-2.5-2.5v-13A2.5 2.5 0 0 1 6 3h3.5"/><path d="M16 16.5 20.5 12 16 7.5"/><path d="M20.5 12H9.5"/>',
   book: '<path d="M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"/><path d="M4 17.5h16"/>',
@@ -104,20 +101,7 @@ const el = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const round2 = (n) => Math.round(n * 100) / 100;
-const fmtAverage = (n) => (n == null || !Number.isFinite(n) ? '—' : round2(n).toFixed(2));
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
-/**
- * Grade colors: green from 6 up, amber between 5 and 6, red below 5.
- * `tint` is the faint background of a subject header in the grades tab.
- */
-function gradeTone(v) {
-  if (!Number.isFinite(v)) return { text: 'text-ink-soft', bar: 'bg-slate-300', tint: 'bg-page' };
-  if (v >= 6) return { text: 'text-emerald-700', bar: 'bg-emerald-500', tint: 'bg-emerald-50/70' };
-  if (v >= 5) return { text: 'text-amber-700', bar: 'bg-amber-500', tint: 'bg-amber-50' };
-  return { text: 'text-rose-700', bar: 'bg-rose-500', tint: 'bg-rose-50/80' };
-}
 
 /**
  * How far a day is from today: 'past', 'today', 'soon' (the next three days)
@@ -175,7 +159,7 @@ const empty = (text) =>
   `<p class="px-4 py-5 text-sm text-ink-faint ${PANEL}">${esc(text)}</p>`;
 
 /** Tabs reachable from the bottom bar, the others get a back arrow on mobile. */
-const BOTTOM_TABS = ['home', 'homework', 'grades', 'timetable'];
+const BOTTOM_TABS = ['home', 'homework', 'calendar', 'timetable'];
 
 /** Title and summary line of the page header, set by every tab when it renders. */
 function setHeader(title, meta = '') {
@@ -225,8 +209,8 @@ function periods() {
 }
 
 /**
- * The pkPeriodo on a grade does not match the one in listaPeriodi, so a day
- * belongs to the chosen period by its dates. "Intero anno" ('*') keeps all.
+ * A day belongs to the chosen period by its dates (Argo's own period keys on
+ * the single records do not match the ones in listaPeriodi). "Intero anno" ('*') keeps all.
  */
 function inPeriod(day) {
   if (state.period === '*' || !day) return true;
@@ -234,33 +218,6 @@ function inPeriod(day) {
   if (!p?.start || !p?.end) return true;
   return day >= p.start && day <= p.end;
 }
-
-function grades() {
-  return active(dash().voti)
-    .filter((v) => v.datGiorno)
-    .map((v) => ({
-      day: dayOf(v.datGiorno),
-      subject: v.desMateria || v.materiaLight?.desDescrizione || '—',
-      label: v.codCodice || (Number.isFinite(v.valore) ? String(v.valore) : '—'),
-      value: Number.isFinite(v.valore) && v.valore > 0 ? v.valore : null,
-      kind: v.tipoValutazione || '',
-      kindCode: String(v.tipoValutazione || v.codVotoPratico || '').toUpperCase(),
-      description: v.descrizioneProva || v.desCommento || '',
-      teacher: v.docente || '',
-      // Argo leaves a grade out of the average with numMedia 0 or faMenoMedia 'S'
-      excluded: v.numMedia === 0 || v.faMenoMedia === 'S' || v.faMenoMedia === true,
-    }))
-    .sort((a, b) => (a.day < b.day ? 1 : -1));
-}
-
-/** A grade counts towards the average unless Argo excludes it (numMedia / faMenoMedia). */
-function countsInAverage(g) {
-  if (g.value == null) return false;
-  if (state.averageAllGrades) return true;
-  return !g.excluded;
-}
-
-const periodGrades = () => grades().filter((g) => inPeriod(g.day));
 
 /** Short djb2 hash, enough to tell two homework texts apart. */
 function shortHash(text) {
@@ -378,58 +335,12 @@ function notices() {
 /** A notice still waiting for the family: presa visione or adesione not given yet. */
 const pendingNotice = (n) => (n.ackRequested && !n.acknowledged) || (n.joinRequested && !n.joined);
 
-/** Subjects Argo knows about (grades and lessons), for the autocomplete. */
+/** Subjects Argo knows about (lessons and homework), for the autocomplete. */
 function knownSubjects() {
   const set = new Set();
-  for (const g of grades()) set.add(g.subject);
+  for (const h of homework()) set.add(h.subject);
   for (const l of active(dash().registro)) if (l.materia) set.add(l.materia);
   return [...set].filter((s) => s && s !== '—').sort((a, b) => a.localeCompare(b, 'it'));
-}
-
-/**
- * Averages recomputed from the single grades. A subject gets the mean of its
- * grades, the average is the mean of the subject averages (every subject
- * weighs the same, however many grades it has), and a month works the same way.
- */
-function computeAverages() {
-  const used = periodGrades().filter(countsInAverage);
-  const bySubject = new Map();
-  const byMonth = new Map(); // month -> subject -> grade values
-
-  for (const g of used) {
-    if (!bySubject.has(g.subject)) bySubject.set(g.subject, { all: [], written: [], oral: [] });
-    const group = bySubject.get(g.subject);
-    group.all.push(g.value);
-    if (g.kindCode.startsWith('S')) group.written.push(g.value);
-    else if (g.kindCode.startsWith('O')) group.oral.push(g.value);
-
-    const month = (g.day || '').slice(0, 7);
-    if (!month) continue;
-    if (!byMonth.has(month)) byMonth.set(month, new Map());
-    const inMonth = byMonth.get(month);
-    inMonth.set(g.subject, [...(inMonth.get(g.subject) || []), g.value]);
-  }
-
-  const avg = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : null);
-  const subjects = [...bySubject.entries()]
-    .map(([subject, group]) => ({
-      subject,
-      average: avg(group.all),
-      written: avg(group.written),
-      oral: avg(group.oral),
-      count: group.all.length,
-    }))
-    .sort((a, b) => b.average - a.average);
-
-  return {
-    subjects,
-    average: avg(subjects.map((s) => s.average)),
-    total: used.length,
-    failing: subjects.filter((s) => s.average < 6).length,
-    months: [...byMonth.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([month, bySubjectInMonth]) => ({ month, average: avg([...bySubjectInMonth.values()].map(avg)) })),
-  };
 }
 
 // --------------------------------------------------- header menu (custom)
@@ -462,7 +373,7 @@ function subjectOptions() {
 }
 
 /** Tabs whose content depends on the period picked in the header. */
-const PERIOD_TABS = ['home', 'grades', 'average', 'absences'];
+const PERIOD_TABS = ['absences'];
 
 /**
  * The dropdown in the header picks the period, except in the homework tab,
@@ -615,10 +526,8 @@ async function refresh() {
 const TABS = [
   { id: 'home', icon: 'home', name: 'Home' },
   { id: 'homework', icon: 'check', name: 'Compiti' },
-  { id: 'grades', icon: 'award', name: 'Voti' },
-  { id: 'timetable', icon: 'clock', name: 'Orario' },
   { id: 'calendar', icon: 'calendar', name: 'Calendario' },
-  { id: 'average', icon: 'chart', name: 'Media' },
+  { id: 'timetable', icon: 'clock', name: 'Orario' },
   { id: 'absences', icon: 'userX', name: 'Assenze' },
   { id: 'reminders', icon: 'bell', name: 'Promemoria' },
   { id: 'noticeboard', icon: 'megaphone', name: 'Bacheca' },
@@ -753,8 +662,6 @@ function render({ animate = true } = {}) {
     calendar: renderCalendar,
     homework: renderHomework,
     timetable: renderTimetable,
-    grades: renderGrades,
-    average: renderAverage,
     absences: renderAbsences,
     reminders: renderReminders,
     noticeboard: renderNoticeboard,
@@ -774,12 +681,9 @@ function render({ animate = true } = {}) {
 // --- home
 
 function renderHome() {
-  const m = computeAverages();
   const today = isoDay(new Date());
   const todo = homework().filter((h) => h.day >= today && !h.done);
   const next = todo.slice(0, 3);
-  const latest = periodGrades().slice(0, 4);
-  const tone = gradeTone(m.average);
   const periodAbsences = absences().filter((a) => inPeriod(a.day));
   const toJustify = absences().filter((a) => a.toJustify);
   const upcoming = reminders().filter((r) => r.day >= today);
@@ -809,29 +713,10 @@ function renderHome() {
       `${upcoming[0].day === today ? 'Oggi' : 'Domani'}: ${upcoming[0].text}`],
   ].filter(Boolean);
 
-  const standing = !m.subjects.length ? ''
-    : m.failing
-      ? `<span class="font-semibold text-rose-700">${plural(m.failing, 'materia sotto il 6', 'materie sotto il 6')}</span>`
-      : '<span class="font-semibold text-emerald-700">nessuna insufficienza</span>';
-
   el('tab-home').innerHTML = `
     <div class="lg:grid lg:grid-cols-2 lg:gap-x-4 lg:items-start">
     <div>
-    <button data-goto="average" aria-label="Apri il dettaglio della media"
-      class="group w-full flex items-end gap-4 px-4 py-5 text-left transition-colors hover:bg-page ${PANEL}
-        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
-      <span class="text-[64px] leading-[.85] font-extrabold tracking-tight
-        ${m.average == null ? 'text-ink-faint' : tone.text}">${fmtAverage(m.average)}</span>
-      <span class="min-w-0 flex-1 pb-0.5">
-        <span class="block font-bold text-[15px]">
-          ${m.subjects.length ? `Media di ${plural(m.subjects.length, 'materia', 'materie')}` : 'Media'}</span>
-        <span class="block text-[13px] text-ink-soft">
-          ${m.subjects.length ? `${plural(m.total, 'voto', 'voti')} · ${standing}` : 'ancora nessun voto'}</span>
-      </span>
-      ${icon('chevron', 'w-4 h-4 shrink-0 mb-1.5 text-ink-faint transition-transform group-hover:translate-x-0.5')}
-    </button>
-
-    ${alerts.length ? `<div class="mt-3 ${PANEL} divide-y divide-slate-100">
+    ${alerts.length ? `<div class="mb-3 ${PANEL} divide-y divide-slate-100">
       ${alerts.map(([tab, dot, text]) => `
         <button data-goto="${tab}" class="group w-full flex items-center gap-3 px-4 py-3 text-left text-[14px] font-semibold
             first:rounded-t-xl last:rounded-b-xl transition-colors hover:bg-page
@@ -842,8 +727,7 @@ function renderHome() {
         </button>`).join('')}
     </div>` : ''}
 
-    <ul class="mt-3 ${LIST}">
-      ${shortcut('calendar', 'Calendario', capitalize(new Date().toLocaleDateString('it-IT', { month: 'long' })), 'calendar')}
+    <ul class="${LIST}">
       ${shortcut('absences', 'Assenze', toJustify.length ? `${toJustify.length} da giustificare`
         : plural(periodAbsences.filter((a) => a.kind === 'A').length, 'assenza', 'assenze'), 'userX')}
       ${shortcut('reminders', 'Promemoria', upcoming.length ? plural(upcoming.length, 'in arrivo', 'in arrivo') : 'niente in arrivo', 'bell')}
@@ -865,41 +749,15 @@ function renderHome() {
         </li>`).join('')}
       </ul>` : empty('Nessun compito in programma.')}
 
-    ${sectionTitle('Ultimi voti', actionLink('Vedi tutti', 'grades'))}
-    ${latest.length ? `<ul class="${LIST}">
-      ${latest.map((g) => gradeRow(g)).join('')}
-      </ul>` : empty('Ancora nessun voto in questo periodo.')}
     </div>
     </div>`;
-}
-
-function gradeRow(g, showSubject = true) {
-  const t = gradeTone(g.value);
-  const description = g.description || 'Valutazione';
-  const title = showSubject ? g.subject : description;
-  const below = showSubject ? description : [g.kind, g.teacher].filter(Boolean).join(' · ');
-  return `
-    <li class="py-3 flex items-center gap-3.5">
-      <span class="shrink-0 w-11 h-11 grid place-items-center rounded-lg border border-slate-200 text-[17px] font-extrabold ${t.text}">
-        ${esc(g.label)}
-      </span>
-      <div class="min-w-0 flex-1">
-        <p class="font-bold text-[15px] truncate">${esc(title)}</p>
-        <p class="text-[13px] text-ink-soft truncate">${esc(below)}</p>
-      </div>
-      <div class="text-right shrink-0">
-        <p class="text-[13px] text-ink-faint">${esc(parseDate(g.day)?.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }) || '')}</p>
-        ${countsInAverage(g) ? '' : '<p class="text-[11px] font-semibold text-ink-faint">non in media</p>'}
-      </div>
-    </li>`;
 }
 
 // --- calendar
 
 function renderCalendar() {
-  const events = { grades: new Map(), homework: new Map(), reminders: new Map() };
+  const events = { homework: new Map(), reminders: new Map() };
   const push = (map, key, val) => key && map.set(key, [...(map.get(key) || []), val]);
-  for (const g of grades()) push(events.grades, g.day, g);
   const allHomework = homework();
   for (const h of allHomework) push(events.homework, h.day, h);
   for (const r of reminders()) push(events.reminders, r.day, r);
@@ -920,7 +778,6 @@ function renderCalendar() {
     const weekend = d.getDay() === 0 || d.getDay() === 6; // no school on saturday and sunday
     const selected = key === state.selectedDay;
     const dots = [
-      events.grades.get(key)?.length ? 'bg-violet-500' : null,
       // amber while something is still to do, green once every homework of the day is done
       events.homework.get(key)?.length
         ? (events.homework.get(key).every((h) => h.done) ? 'bg-emerald-500' : 'bg-amber-500') : null,
@@ -951,15 +808,6 @@ function renderCalendar() {
 
   const sel = state.selectedDay;
   const sections = [
-    ['Voti', events.grades.get(sel), (g) => {
-      const t = gradeTone(g.value);
-      return `<div class="flex items-center gap-3">
-        <span class="shrink-0 w-11 h-11 grid place-items-center rounded-lg border border-slate-200 font-extrabold ${t.text}">${esc(g.label)}</span>
-        <div class="min-w-0">
-          <p class="font-bold text-[15px]">${esc(g.subject)}</p>
-          <p class="text-[13px] text-ink-soft truncate">${esc(g.description || 'Valutazione')}</p>
-        </div></div>`;
-    }],
     ['Compiti', events.homework.get(sel), (h) => `
       <div class="flex gap-3 items-start">
         <div class="min-w-0 flex-1">
@@ -1005,7 +853,7 @@ function renderCalendar() {
       </div>
       <div class="grid grid-cols-7 gap-1">${cells}</div>
       <div class="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 text-xs text-ink-soft">
-        ${legend('bg-violet-500', 'voti')}${legend('bg-amber-500', 'compiti')}
+        ${legend('bg-amber-500', 'compiti')}
         ${legend('bg-emerald-500', 'compiti fatti')}${legend('bg-sky-500', 'promemoria')}
       </div>
     </div>
@@ -1801,121 +1649,6 @@ function deleteSlot() {
   saveTimetable();
 }
 
-// --- grades
-
-function renderGrades() {
-  const list = periodGrades();
-  const bySubject = new Map();
-  for (const g of list) bySubject.set(g.subject, [...(bySubject.get(g.subject) || []), g]);
-
-  setHeader('Voti', plural(list.length, 'valutazione', 'valutazioni'));
-
-  el('tab-grades').innerHTML = `
-    <div class="lg:columns-2 lg:gap-x-4">
-      ${list.length === 0 ? empty('Nessun voto nel periodo selezionato.') : ''}
-      ${[...bySubject.entries()].map(([subject, items]) => {
-        const used = items.filter(countsInAverage).map((g) => g.value);
-        const average = used.length ? used.reduce((s, n) => s + n, 0) / used.length : null;
-        const t = gradeTone(average);
-        return `<div class="mb-4 ${PANEL} break-inside-avoid">
-          <div class="flex items-baseline gap-3 px-4 py-3 rounded-t-xl border-b border-slate-200 ${t.tint}">
-            <h2 class="min-w-0 font-extrabold text-[15px] leading-snug">${esc(subject)}</h2>
-            <p class="ml-auto shrink-0 text-[13px] text-ink-soft">media
-              <span class="ml-1 text-[17px] font-extrabold tabular-nums ${t.text}">${fmtAverage(average)}</span></p>
-          </div>
-          <ul class="px-4 divide-y divide-slate-100">${items.map((g) => gradeRow(g, false)).join('')}</ul>
-        </div>`;
-      }).join('')}
-    </div>`;
-}
-
-// --- average
-
-function renderAverage() {
-  const m = computeAverages();
-  const scale = (v) => Math.max(0, Math.min(100, ((v - 1) / 9) * 100));
-  const tone = gradeTone(m.average);
-  const best = m.subjects[0];
-
-  setHeader('Media', m.subjects.length
-    ? `${plural(m.subjects.length, 'materia', 'materie')} · ${plural(m.total, 'voto', 'voti')}` : '');
-
-  el('tab-average').innerHTML = `
-    <div class="lg:grid lg:grid-cols-2 lg:gap-x-4 lg:items-start">
-    <div>
-    <div class="px-4 py-5 ${PANEL}">
-    <div class="flex items-end gap-4">
-      <p class="text-[64px] leading-[.85] font-extrabold tracking-tight
-        ${m.average == null ? 'text-ink-faint' : tone.text}">${fmtAverage(m.average)}</p>
-      <div class="min-w-0 pb-0.5">
-        <p class="font-bold text-[15px] ${!m.subjects.length ? '' : m.failing ? 'text-rose-700' : 'text-emerald-700'}">
-          ${!m.subjects.length ? 'Ancora nessun voto'
-            : m.failing ? plural(m.failing, 'materia sotto il 6', 'materie sotto il 6') : 'Nessuna insufficienza'}</p>
-        ${best ? `<p class="text-[13px] text-ink-soft">migliore ${fmtAverage(best.average)}</p>` : ''}
-      </div>
-    </div>
-    <p class="mt-4 text-[13px] text-ink-soft">Ogni materia pesa uguale, qualunque sia il numero di voti.</p>
-    <button type="button" id="count-all-toggle" role="switch" aria-checked="${state.averageAllGrades}"
-      class="mt-4 pt-4 w-full flex items-center gap-3 border-t border-slate-100 text-left text-sm font-semibold
-        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-600">
-      <span class="mr-auto">Conta anche i voti esclusi dalla media</span>
-      <span class="relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0
-        ${state.averageAllGrades ? 'bg-violet-600' : 'bg-slate-300'}">
-        <span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white
-          transition-transform duration-200 ease-out ${state.averageAllGrades ? 'translate-x-5' : ''}"></span>
-      </span>
-    </button>
-    </div>
-
-    ${sectionTitle('Andamento mensile')}
-    ${m.months.length ? `<div class="px-4 py-4 ${PANEL}">
-      <div class="flex items-end gap-2 h-40">
-        ${m.months.map((x) => {
-          const t = gradeTone(x.average);
-          // the bar grows in the space left by the two labels, the value sits right on top of it
-          return `<div class="flex-1 h-full flex flex-col justify-end items-center gap-1.5 min-w-0 max-w-14">
-            <span class="text-xs font-bold ${t.text}">${fmtAverage(x.average)}</span>
-            <div class="w-full rounded ${t.bar}" style="height:calc((100% - 3rem) * ${scale(x.average) / 100})"></div>
-            <span class="text-[11px] text-ink-faint">
-              ${new Date(+x.month.slice(0, 4), +x.month.slice(5, 7) - 1, 1).toLocaleDateString('it-IT', { month: 'short' }).replace('.', '')}
-            </span>
-          </div>`;
-        }).join('')}
-      </div>
-      <p class="text-xs text-ink-faint mt-3">Per ogni mese, la media delle materie con voti in quel mese.</p></div>`
-      : empty('Servono voti in almeno un mese.')}
-    </div>
-
-    <div>
-    ${sectionTitle('Per materia', '', 'lg:mt-0')}
-    ${m.subjects.length ? `<div class="px-4 py-4 space-y-5 ${PANEL}">
-      ${m.subjects.map((x) => {
-        const t = gradeTone(x.average);
-        const detail = [
-          x.written ? 'scritto ' + fmtAverage(x.written) : '',
-          x.oral ? 'orale ' + fmtAverage(x.oral) : '',
-          plural(x.count, 'voto', 'voti'),
-        ].filter(Boolean).join(' · ');
-        return `<div>
-          <div class="flex items-start gap-3 mb-2">
-            <div class="min-w-0 flex-1">
-              <p class="font-bold text-[15px] leading-snug">${esc(x.subject)}</p>
-              <p class="text-xs text-ink-faint mt-0.5">${detail}</p>
-            </div>
-            <span class="shrink-0 text-[17px] font-extrabold tabular-nums leading-tight ${t.text}">${fmtAverage(x.average)}</span>
-          </div>
-          <div class="h-1.5 rounded-full bg-page overflow-hidden">
-            <div class="h-full rounded-full ${t.bar}" style="width:${scale(x.average)}%"></div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>` : empty('Nessun voto utile al calcolo.')}
-    </div>
-    </div>`;
-
-  el('count-all-toggle').onclick = () => { state.averageAllGrades = !state.averageAllGrades; render(); };
-}
-
 // --- absences
 
 const ABSENCE_KINDS = {
@@ -2166,7 +1899,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// initial tab from the query string (?tab=grades), handy for testing too
+// initial tab from the query string (?tab=homework), handy for testing too
 const initialTab = new URLSearchParams(location.search).get('tab');
 if (TABS.some((t) => t.id === initialTab)) state.tab = initialTab;
 

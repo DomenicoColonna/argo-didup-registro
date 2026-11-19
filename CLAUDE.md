@@ -29,11 +29,9 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
   and bars, not in backgrounds: the only fills are today (violet) and done (green).
   Desktop only changes go behind the `lg:` breakpoint.
 - Every tab sets the page title and its summary line with `setHeader`.
-- Averages are computed locally, see `computeAverages` in `public/app.js`. A grade
-  counts unless `numMedia === 0` or `faMenoMedia === 'S'`. The average is the mean
-  of the subject averages, there is no overall mean of every grade.
-- Periods filter by their dates (`inPeriod`), the `pkPeriodo` on grades does not
-  match the one in `listaPeriodi`.
+- No grades and no averages anywhere in the UI, the user does not want them.
+- Periods filter the absences by their dates (`inPeriod`), Argo's period keys
+  on single records do not match the ones in `listaPeriodi`.
 - The calendar only shows September to June of the current school year.
 - Homework has no id from Argo: `homeworkKey` (due day, subject, text hash)
   is the key of the saved state. Changing its output orphans everything already saved.
@@ -41,7 +39,7 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
   element ids, CSS classes, localStorage keys, database tables and columns, comments.
   Only the text shown in the UI is Italian. Argo's own field names (`desMateria`,
   `registro`...) stay as the API sends them, and get mapped to English objects
-  right where they are read (`grades()`, `homework()` in `public/app.js`).
+  right where they are read (`homework()`, `absences()` in `public/app.js`).
 - Commit and push only when asked.
 - `server.js` (VPS) and `netlify/functions/api.js` (Netlify) must keep the same
   endpoints and response shape, the frontend does not know which one it talks to.
