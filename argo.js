@@ -1,17 +1,19 @@
 'use strict';
 /**
  * Client for the didUP Famiglia API (the same one the official app uses).
- * Flow: OAuth2 + PKCE on auth.portaleargo.it, then token, then appfamiglia endpoints.
+ * Flow: OAuth2 + PKCE on auth.portaleargo.it, then token, then the Famiglia endpoints.
+ * The old backend (www.portaleargo.it/appfamiglia/api/rest) answers 503 since
+ * November 2026, the app now talks to didattica.portaleargo.it/famiglia/api.
  */
 const crypto = require('node:crypto');
 
 const CLIENT_ID = '72fd6dea-d0ab-4bb9-8eaa-3ac24c84886c';
 const REDIRECT_URI = 'it.argosoft.didup.famiglia.new://login-callback';
 const SCOPES = 'openid offline profile user.roles argo';
-// Argo refuses anything older than the current store release with "scarica
-// l'ultima versione". Bump this when login starts failing with that message.
-const CLIENT_VERSION = process.env.ARGO_VERSION || '1.30.2';
-const API_BASE = 'https://www.portaleargo.it/appfamiglia/api/rest';
+// Version the Famiglia backend expects from its web client. Argo refuses
+// outdated ones (HTTP 410 or "scarica l'ultima versione"), bump it when that happens.
+const CLIENT_VERSION = process.env.ARGO_VERSION || '4.1.0';
+const API_BASE = 'https://didattica.portaleargo.it/famiglia/api';
 
 const ALPHANUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const randomString = (n) =>
@@ -246,6 +248,7 @@ async function apiRequest(session, endpoint, body, { needsData = true } = {}) {
   const headers = {
     accept: 'application/json',
     'argo-client-version': CLIENT_VERSION,
+    'os-type': 'WEB',
     authorization: `Bearer ${session.token?.access_token || ''}`,
   };
   if (body != null) headers['content-type'] = 'application/json';
@@ -253,7 +256,6 @@ async function apiRequest(session, endpoint, body, { needsData = true } = {}) {
     headers['x-auth-token'] = session.login.token;
     headers['x-cod-min'] = session.login.codMin;
   }
-  if (session.token) headers['x-date-exp-auth'] = formatDate(session.token.expireDate);
 
   const res = await fetch(`${API_BASE}/${endpoint}`, {
     method: body != null ? 'POST' : 'GET',
@@ -276,37 +278,23 @@ async function apiRequest(session, endpoint, body, { needsData = true } = {}) {
   return json;
 }
 
+/** Renews the access token through the OAuth server a minute before it expires. */
 async function refreshIfNeeded(session) {
   if (!session.token || new Date(session.token.expireDate).getTime() > Date.now() + 60_000) return;
-  const now = new Date();
-  const res = await fetch(`${API_BASE}/auth/refresh-token`, {
+  const res = await fetch('https://auth.portaleargo.it/oauth2/token', {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      'argo-client-version': CLIENT_VERSION,
-      authorization: `Bearer ${session.token.access_token}`,
-      'x-auth-token': session.login?.token || '',
-      'x-cod-min': session.login?.codMin || '',
-      'x-date-exp-auth': formatDate(session.token.expireDate),
-    },
-    body: JSON.stringify({
-      'r-token': session.token.refresh_token,
-      'client-id': CLIENT_ID,
-      scopes: `[${session.token.scope.split(' ').join(', ')}]`,
-      'old-bearer': session.token.access_token,
-      'primo-accesso': 'false',
-      'ripeti-login': 'false',
-      'exp-bearer': formatDate(session.token.expireDate),
-      'ts-app': formatDate(now),
-      proc: 'initState_global_random_12345',
-      username: session.login?.username,
-    }),
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: session.token.refresh_token,
+      client_id: CLIENT_ID,
+    }).toString(),
   });
-  const data = await res.json();
-  if (data.error || !data.expires_in) throw new Error(data.msg || 'Sessione scaduta, rifai il login');
-  const expireDate = new Date(res.headers.get('date') || now);
+  const data = await res.json().catch(() => ({}));
+  if (data.error || !data.access_token || !data.expires_in) throw new Error('Sessione scaduta, rifai il login');
+  const expireDate = new Date(res.headers.get('date') || Date.now());
   expireDate.setSeconds(expireDate.getSeconds() + data.expires_in);
+  // Argo may rotate the refresh token, otherwise the old one stays valid
   session.token = { ...session.token, ...data, expireDate };
 }
 
@@ -331,8 +319,8 @@ async function loadDashboard(session) {
  */
 async function attachmentUrl(session, uid, personal) {
   const res = personal
-    ? await apiRequest(session, 'downloadallegatobachecaalunno', { uid, pkScheda: session.profile.scheda?.pk }, { needsData: false })
-    : await apiRequest(session, 'downloadallegatobacheca', { uid }, { needsData: false });
+    ? await apiRequest(session, 'famiglia/downloadallegatobachecaalunno', { uid, pkScheda: session.profile.scheda?.pk }, { needsData: false })
+    : await apiRequest(session, 'famiglia/downloadallegatobacheca', { uid }, { needsData: false });
   if (!res.url) throw new Error(res.msg || 'Allegato non disponibile');
   return res.url;
 }
@@ -343,11 +331,7 @@ async function fullLogin(credentials, onStep = () => {}) {
   session.token = await exchangeToken(await getAuthCode(credentials, onStep));
   onStep('token', { expires: session.token.expireDate });
 
-  const login = await apiRequest(session, 'login', {
-    'lista-opzioni-notifiche': '{}',
-    'lista-x-auth-token': '[]',
-    clientID: randomString(163),
-  });
+  const login = await apiRequest(session, 'login', {});
   if (!Array.isArray(login.data) || !login.data[0]) throw new Error('Login senza dati, riprova');
   session.login = login.data[0];
   onStep('login', { codMin: session.login.codMin, username: session.login.username });
