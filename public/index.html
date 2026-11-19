@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#5b21b6">
+<meta name="theme-color" content="#ffffff">
 <meta http-equiv="cache-control" content="no-store">
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Registro">
 <title>Registro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,11 +24,11 @@
         fontFamily: { sans: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
         colors: {
           page: '#f4f5fa',
-          ink: { DEFAULT: '#161a2b', soft: '#5b6178', faint: '#8b90a6' },
+          ink: { DEFAULT: '#161a2b', soft: '#5b6178', faint: '#6b7189' },
         },
+        // the UI is flat: this is the only shadow, for what floats (dropdown, dialogs)
         boxShadow: {
-          card: '0 1px 2px rgba(22,26,43,.04), 0 10px 28px -18px rgba(22,26,43,.35)',
-          lift: '0 2px 6px rgba(22,26,43,.06), 0 24px 48px -28px rgba(22,26,43,.45)',
+          pop: '0 0 0 1px rgba(22,26,43,.05), 0 16px 40px -16px rgba(22,26,43,.28)',
         },
       },
     },
@@ -36,12 +36,40 @@
 </script>
 <style>
   :root { --sai: env(safe-area-inset-bottom, 0px); }
-  html, body { background-color: #f4f5fa; }
+  html, body { background-color: #fff; }
   body { overscroll-behavior-y: none; }
   dialog:not([open]) { display: none; }
   body { -webkit-font-smoothing: antialiased; }
-  @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  .enter { animation: enter .5s cubic-bezier(.16,1,.3,1) both; }
+  .field {
+    margin-top: .375rem; width: 100%; border-radius: .5rem; background: #fff; color: #161a2b;
+    border: 1px solid #e2e8f0; padding: .65rem .8rem; font-size: 15px;
+    outline: 2px solid transparent; outline-offset: -1px; transition: border-color .15s, outline-color .15s;
+  }
+  .field::placeholder { color: #6b7189; }
+  .field:hover { border-color: #cbd5e1; }
+  .field:focus { border-color: #7c3aed; outline-color: #7c3aed; }
+  .btn {
+    border-radius: .5rem; padding: .575rem .875rem; font-weight: 600; border: 1px solid transparent;
+    transition: background-color .15s, transform .15s;
+  }
+  .btn:active { transform: scale(.985); }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  .btn:focus-visible { outline: 2px solid #7c3aed; outline-offset: 2px; }
+  .btn-primary { background: #7c3aed; color: #fff; }
+  .btn-primary:hover { background: #6d28d9; }
+  .btn-quiet { background: #fff; color: #161a2b; border-color: #e2e8f0; }
+  .btn-quiet:hover { background: #f4f5fa; }
+  .btn-danger { background: #e11d48; color: #fff; }
+  .btn-danger:hover { background: #be123c; }
+  .btn-ghost-danger { color: #e11d48; }
+  .btn-ghost-danger:hover { background: #fff1f2; }
+  .modal {
+    padding: 0; border-radius: .875rem; background: #fff; color: #161a2b;
+    box-shadow: 0 0 0 1px rgba(22,26,43,.05), 0 16px 40px -16px rgba(22,26,43,.28);
+  }
+  .modal::backdrop { background: rgba(22,26,43,.4); }
+  @keyframes enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .enter { animation: enter .35s cubic-bezier(.16,1,.3,1) both; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { scrollbar-width: none; }
   @keyframes slide-forward { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
@@ -53,112 +81,95 @@
   }
 </style>
 </head>
-<body class="bg-page text-ink font-sans">
+<body class="bg-white text-ink font-sans">
 
 <!-- -------------------------------------------------------------- BOOT -->
 <!-- shown while the saved session is checked, so the login form never flashes
      for someone who is already signed in -->
-<div id="boot-view" class="min-h-screen grid place-items-center p-5
-     bg-[radial-gradient(120%_80%_at_50%_-10%,#7c3aed_0%,#4f46e5_45%,#f4f5fa_100%)]">
+<div id="boot-view" class="min-h-screen grid place-items-center p-5 bg-white">
   <div class="flex flex-col items-center gap-4" role="status" aria-live="polite">
-    <img src="/logo.svg" alt="" width="60" height="60"
-      class="animate-pulse drop-shadow-[0_8px_16px_rgba(76,29,149,.35)]">
-    <p class="text-sm font-semibold text-white/85">Apro il registro…</p>
+    <img src="/logo.svg" alt="" width="52" height="52" class="animate-pulse">
+    <p class="text-sm font-semibold text-ink-soft">Apro il registro…</p>
   </div>
 </div>
 
 <!-- ------------------------------------------------------------- LOGIN -->
-<div id="login-view" hidden class="hidden min-h-screen grid place-items-center p-5
-     bg-[radial-gradient(120%_80%_at_50%_-10%,#7c3aed_0%,#4f46e5_45%,#f4f5fa_100%)]">
-  <form id="login-form" class="w-full max-w-sm bg-white rounded-3xl shadow-lift p-7 space-y-5 enter">
-    <div class="space-y-1.5">
-      <img src="/logo.svg" alt="" width="52" height="52" class="mb-3 drop-shadow-[0_8px_16px_rgba(76,29,149,.35)]">
-      <h1 class="text-2xl font-extrabold tracking-tight">Il tuo registro</h1>
-      <p class="text-sm text-ink-soft">Accedi con le credenziali di didUP Famiglia.</p>
+<div id="login-view" hidden class="hidden min-h-screen grid place-items-center px-6 py-10 bg-white">
+  <form id="login-form" class="w-full max-w-[22rem] enter">
+    <img src="/logo.svg" alt="" width="44" height="44">
+    <h1 class="mt-6 text-[28px] leading-tight font-extrabold tracking-tight">Il tuo registro</h1>
+    <p class="mt-1.5 text-[15px] text-ink-soft">Accedi con le credenziali di didUP Famiglia.</p>
+
+    <div class="mt-8 space-y-4">
+      <label class="block">
+        <span class="text-[13px] font-semibold text-ink-soft">Codice scuola</span>
+        <input name="schoolCode" required placeholder="SS12345" autocomplete="off" autocapitalize="characters"
+          class="field">
+      </label>
+      <label class="block">
+        <span class="text-[13px] font-semibold text-ink-soft">Utente</span>
+        <input name="username" required autocomplete="username" class="field">
+      </label>
+      <label class="block">
+        <span class="text-[13px] font-semibold text-ink-soft">Password</span>
+        <input name="password" type="password" required autocomplete="current-password" class="field">
+      </label>
     </div>
 
-    <label class="block">
-      <span class="text-xs font-semibold text-ink-soft">Codice scuola</span>
-      <input name="schoolCode" required placeholder="SS12345" autocomplete="off" autocapitalize="characters"
-        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
-               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
-    </label>
-    <label class="block">
-      <span class="text-xs font-semibold text-ink-soft">Utente</span>
-      <input name="username" required autocomplete="username"
-        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
-               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
-    </label>
-    <label class="block">
-      <span class="text-xs font-semibold text-ink-soft">Password</span>
-      <input name="password" type="password" required autocomplete="current-password"
-        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
-               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
-    </label>
-
-    <button id="login-btn"
-      class="w-full rounded-xl bg-violet-600 text-white py-3 font-semibold transition
-             hover:bg-violet-700 active:scale-[.99] disabled:opacity-60 disabled:cursor-not-allowed
-             focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
-      Accedi
-    </button>
-    <p id="login-error" class="hidden text-sm text-rose-600 bg-rose-50 rounded-xl px-3.5 py-2.5"></p>
-    <p class="text-xs text-ink-faint leading-relaxed">
+    <button id="login-btn" class="btn btn-primary w-full mt-6 py-3">Accedi</button>
+    <p id="login-error" class="hidden mt-4 text-sm text-rose-700 border border-rose-200 rounded-lg px-3.5 py-2.5"></p>
+    <p class="mt-5 text-xs text-ink-faint leading-relaxed">
       Le credenziali servono solo per ottenere il token e non vengono salvate su disco.
     </p>
   </form>
 </div>
 
 <!-- --------------------------------------------------------------- APP -->
-<div id="app-view" class="hidden min-h-screen pb-28 lg:pb-10 lg:pl-64">
+<div id="app-view" class="hidden min-h-screen pb-28 lg:pb-14 lg:pl-60">
 
-  <header class="bg-[linear-gradient(135deg,#7c3aed_0%,#4f46e5_55%,#4338ca_100%)] text-white
-                 rounded-b-[28px] px-5 pt-6 pb-16 relative lg:px-10 lg:pt-8 lg:pb-8">
-    <!-- the decorations are clipped in here, the header itself must keep overflow
-         visible or the header dropdown gets cut off -->
-    <div class="absolute inset-0 overflow-hidden rounded-b-[28px] pointer-events-none">
-      <div class="absolute -right-16 -top-20 w-64 h-64 rounded-full bg-white/10"></div>
-      <div class="absolute -left-24 top-10 w-56 h-56 rounded-full bg-white/5"></div>
-    </div>
-    <div class="max-w-3xl lg:max-w-5xl mx-auto relative">
-      <div class="flex flex-wrap items-start lg:items-center gap-3">
-        <div class="order-1">
-          <p class="text-white/70 text-sm font-medium">Bentornato</p>
-          <h1 id="student-name" class="text-[26px] leading-tight font-extrabold tracking-tight"></h1>
-          <p id="student-meta" class="text-white/70 text-sm mt-0.5"></p>
-        </div>
-        <div class="order-2 lg:order-3 ml-auto lg:ml-0 flex items-center gap-2">
-          <button id="refresh-btn" title="Aggiorna i dati" aria-label="Aggiorna i dati"
-            class="w-10 h-10 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 transition"
-            data-icon="refresh"></button>
-          <button id="logout-btn" data-action="logout" title="Esci" aria-label="Esci"
-            class="w-10 h-10 grid place-items-center rounded-full bg-white/15 hover:bg-white/25 text-rose-400
-                   transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
-                   focus-visible:outline-white"
-            data-icon="logout"></button>
-        </div>
-      <!-- on mobile it wraps under the greeting, on desktop it fits on the same row -->
-      <div id="header-menu-row" class="order-3 lg:order-2 w-full lg:w-auto lg:ml-auto mt-5 lg:mt-0">
+  <!-- title and summary change with the tab, see setHeader in app.js -->
+  <header class="max-w-3xl lg:max-w-5xl mx-auto px-5 pt-6 lg:px-12 lg:pt-11">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-4">
+      <button id="header-back" type="button" aria-label="Torna alla home" data-icon="arrowLeft"
+        class="hidden lg:hidden order-1 -ml-2.5 w-10 h-10 shrink-0 grid place-items-center rounded-lg
+               text-ink-soft hover:bg-page transition focus-visible:outline focus-visible:outline-2
+               focus-visible:outline-violet-600"></button>
+      <div class="order-1 min-w-0 flex-1">
+        <h1 id="page-title" class="text-[28px] lg:text-[32px] leading-tight font-extrabold tracking-tight truncate"></h1>
+        <p id="page-meta" class="text-sm text-ink-soft mt-0.5 truncate"></p>
+      </div>
+      <div class="order-2 lg:order-3 flex items-center -mr-2.5 lg:mr-0">
+        <button id="refresh-btn" title="Aggiorna i dati" aria-label="Aggiorna i dati"
+          class="w-10 h-10 grid place-items-center rounded-lg text-ink-soft hover:bg-page hover:text-ink transition
+                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600"
+          data-icon="refresh"></button>
+        <button id="logout-btn" data-action="logout" title="Esci" aria-label="Esci"
+          class="lg:hidden w-10 h-10 grid place-items-center rounded-lg text-ink-soft hover:bg-rose-50
+                 hover:text-rose-600 transition focus-visible:outline focus-visible:outline-2
+                 focus-visible:outline-rose-500"
+          data-icon="logout"></button>
+      </div>
+      <!-- on mobile it wraps under the title, on desktop it fits on the same row -->
+      <div id="header-menu-row" class="order-3 lg:order-2 w-full lg:w-auto">
         <div id="header-menu" class="relative inline-block text-left max-w-full lg:max-w-xs">
           <button id="header-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false"
-            class="flex items-center gap-2 max-w-full text-sm font-semibold bg-white/15 hover:bg-white/25
-                   rounded-full pl-4 pr-3 py-2 transition focus-visible:outline focus-visible:outline-2
-                   focus-visible:outline-offset-2 focus-visible:outline-white/70">
+            class="flex items-center gap-2 max-w-full text-sm font-semibold border border-slate-200 hover:bg-page
+                   rounded-lg pl-3.5 pr-2.5 py-2 transition focus-visible:outline focus-visible:outline-2
+                   focus-visible:outline-offset-2 focus-visible:outline-violet-600">
             <span id="header-menu-label" class="min-w-0 truncate">Intero anno</span>
-            <span id="header-menu-chevron" class="shrink-0 transition-transform duration-200" data-icon="chevronDown"
-                  data-icon-size="w-4 h-4"></span>
+            <span id="header-menu-chevron" class="shrink-0 text-ink-soft transition-transform duration-200"
+                  data-icon="chevronDown" data-icon-size="w-4 h-4"></span>
           </button>
           <div id="header-menu-list" hidden role="listbox" aria-label="Periodo"
-            class="absolute left-0 top-full mt-2 w-[17rem] max-w-[calc(100vw-2.5rem)] z-40 p-1.5
-                   bg-white text-ink rounded-2xl shadow-lift origin-top-left
+            class="absolute left-0 lg:left-auto lg:right-0 top-full mt-2 w-[17rem] max-w-[calc(100vw-2.5rem)] z-40 p-1.5
+                   bg-white text-ink rounded-xl shadow-pop origin-top-left lg:origin-top-right
                    transition duration-150 ease-out opacity-0 scale-95 -translate-y-1"></div>
         </div>
-      </div>
       </div>
     </div>
   </header>
 
-  <main class="max-w-3xl lg:max-w-5xl mx-auto px-5 lg:px-10 -mt-10 lg:mt-7 relative">
+  <main class="max-w-3xl lg:max-w-5xl mx-auto px-5 lg:px-12 mt-7 lg:mt-9">
     <section id="tab-home" class="tab-panel hidden"></section>
     <section id="tab-calendar" class="tab-panel hidden"></section>
     <section id="tab-homework" class="tab-panel hidden"></section>
@@ -168,133 +179,99 @@
     <section id="tab-absences" class="tab-panel hidden"></section>
     <section id="tab-reminders" class="tab-panel hidden"></section>
     <section id="tab-noticeboard" class="tab-panel hidden"></section>
-    <p id="updated-at" class="text-center text-xs text-ink-faint mt-8"></p>
+    <p id="updated-at" class="text-xs text-ink-faint mt-12"></p>
   </main>
 
-  <!-- the gradient covers the area under the phone's gesture bar, otherwise the
-       white browser canvas shows through below the navbar -->
-  <aside class="hidden lg:flex fixed inset-y-0 left-0 w-64 z-40 flex-col
-                bg-white border-r border-slate-200/70 p-4">
-    <div class="flex items-center gap-2.5 px-2 py-2">
-      <img src="/logo.svg" alt="" width="36" height="36">
+  <aside class="hidden lg:flex fixed inset-y-0 left-0 w-60 z-40 flex-col bg-white border-r border-slate-200 px-3 pt-6 pb-5">
+    <div class="flex items-center gap-2.5 px-3">
+      <img src="/logo.svg" alt="" width="30" height="30">
       <span class="font-extrabold tracking-tight">Registro</span>
     </div>
-    <nav id="side-nav" class="mt-5 flex flex-col gap-1"></nav>
-    <div class="mt-auto rounded-2xl bg-page p-3">
+    <nav id="side-nav" class="mt-8 flex flex-col gap-0.5"></nav>
+    <div class="mt-auto px-3">
       <p id="side-name" class="font-bold text-sm truncate"></p>
       <p id="side-meta" class="text-xs text-ink-faint truncate"></p>
       <button data-action="logout"
-        class="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200
-               py-2 text-sm font-semibold text-rose-500 hover:bg-rose-50 transition
-               focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
+        class="mt-3 -ml-2 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-ink-soft
+               hover:text-rose-600 transition focus-visible:outline focus-visible:outline-2
+               focus-visible:outline-rose-500">
         <span data-icon="logout" data-icon-size="w-4 h-4"></span> Esci
       </button>
     </div>
   </aside>
 
-  <nav class="fixed bottom-0 inset-x-0 z-30 pointer-events-none lg:hidden
-              px-4 pt-8 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]
-              bg-gradient-to-t from-page via-page to-transparent">
-    <div class="pointer-events-auto mx-auto w-full max-w-md bg-white/95 backdrop-blur
-                border border-slate-200/70 shadow-lift rounded-[20px] grid grid-cols-4 gap-1 p-2">
+  <!-- docked to the bottom edge and padded by the safe area, so nothing of the
+       page shows through under the phone's gesture bar -->
+  <nav class="fixed bottom-0 inset-x-0 z-30 lg:hidden bg-white border-t border-slate-200
+              pb-[env(safe-area-inset-bottom,0px)]">
+    <div class="mx-auto w-full max-w-md grid grid-cols-4 px-2">
       <button data-tab="home" class="tab" data-icon="home" data-label="Home"></button>
-      <button data-tab="calendar" class="tab" data-icon="calendar" data-label="Calendario"></button>
       <button data-tab="homework" class="tab" data-icon="check" data-label="Compiti"></button>
+      <button data-tab="grades" class="tab" data-icon="award" data-label="Voti"></button>
       <button data-tab="timetable" class="tab" data-icon="clock" data-label="Orario"></button>
     </div>
   </nav>
 </div>
 
-<dialog id="logout-dialog"
-  class="w-[min(22rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
-         backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
+<dialog id="logout-dialog" class="modal w-[min(22rem,calc(100vw-2.5rem))]">
   <div class="p-6">
-    <div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 grid place-items-center" data-icon="logout"></div>
-    <h2 class="text-lg font-extrabold tracking-tight mt-3">Vuoi uscire?</h2>
-    <p class="text-sm text-ink-soft mt-1">
+    <h2 class="text-lg font-extrabold tracking-tight">Vuoi uscire?</h2>
+    <p class="text-sm text-ink-soft mt-1.5">
       La sessione viene chiusa e dovrai reinserire codice scuola, utente e password per rientrare.
     </p>
-    <div class="flex gap-2 mt-5">
-      <button id="logout-cancel" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
-        hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
-      <button id="logout-confirm" class="flex-1 rounded-xl bg-rose-500 text-white font-semibold py-2.5
-        hover:bg-rose-600 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-rose-600">Esci</button>
+    <div class="flex gap-2 mt-6">
+      <button id="logout-cancel" class="btn btn-quiet flex-1">Annulla</button>
+      <button id="logout-confirm" class="btn btn-danger flex-1">Esci</button>
     </div>
   </div>
 </dialog>
 
-<dialog id="note-dialog"
-  class="w-[min(24rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
-         backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
+<dialog id="note-dialog" class="modal w-[min(24rem,calc(100vw-2.5rem))]">
   <div class="p-6">
-    <div class="w-11 h-11 rounded-2xl bg-violet-50 text-violet-600 grid place-items-center" data-icon="pencil"></div>
-    <h2 id="note-subject" class="text-lg font-extrabold tracking-tight mt-3"></h2>
-    <p id="note-text" class="text-sm text-ink-soft mt-1 line-clamp-3 whitespace-pre-wrap"></p>
-    <label class="block mt-4">
-      <span class="text-xs font-semibold text-ink-soft">La tua nota</span>
+    <h2 id="note-subject" class="text-lg font-extrabold tracking-tight"></h2>
+    <p id="note-text" class="text-sm text-ink-soft mt-1.5 line-clamp-3 whitespace-pre-wrap"></p>
+    <label class="block mt-5">
+      <span class="text-[13px] font-semibold text-ink-soft">La tua nota</span>
       <textarea id="note-input" rows="4" maxlength="2000" placeholder="Pagine, esercizi, cose da ricordare…"
-        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px] resize-y
-               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"></textarea>
+        class="field resize-y"></textarea>
     </label>
-    <div class="flex gap-2 mt-5">
-      <button id="note-delete" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
-        hover:bg-rose-50 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-rose-500">Elimina</button>
-      <button id="note-cancel" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
-        hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
-      <button id="note-save" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
-        hover:bg-violet-700 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Salva</button>
+    <div class="flex gap-2 mt-6">
+      <button id="note-delete" class="hidden btn btn-ghost-danger">Elimina</button>
+      <button id="note-cancel" class="btn btn-quiet flex-1">Annulla</button>
+      <button id="note-save" class="btn btn-primary flex-1">Salva</button>
     </div>
   </div>
 </dialog>
 
-<dialog id="slot-dialog"
-  class="w-[min(24rem,calc(100vw-2.5rem))] rounded-3xl p-0 bg-white text-ink shadow-lift
-         backdrop:bg-ink/40 backdrop:backdrop-blur-sm open:animate-none">
+<dialog id="slot-dialog" class="modal w-[min(24rem,calc(100vw-2.5rem))]">
   <form id="slot-form" class="p-6" novalidate>
-    <div class="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 grid place-items-center" data-icon="clock"></div>
-    <h2 id="slot-title" class="text-lg font-extrabold tracking-tight mt-3">Nuova ora</h2>
+    <h2 id="slot-title" class="text-lg font-extrabold tracking-tight">Nuova ora</h2>
     <p id="slot-day" class="text-sm text-ink-soft mt-1"></p>
-    <div class="grid grid-cols-2 gap-3 mt-4">
+    <div class="grid grid-cols-2 gap-3 mt-5">
       <label class="block">
-        <span class="text-xs font-semibold text-ink-soft">Dalle</span>
-        <input id="slot-start" type="time" required step="300"
-          class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
-                 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+        <span class="text-[13px] font-semibold text-ink-soft">Dalle</span>
+        <input id="slot-start" type="time" required step="300" class="field">
       </label>
       <label class="block">
-        <span class="text-xs font-semibold text-ink-soft">Alle</span>
-        <input id="slot-end" type="time" required step="300"
-          class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
-                 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+        <span class="text-[13px] font-semibold text-ink-soft">Alle</span>
+        <input id="slot-end" type="time" required step="300" class="field">
       </label>
     </div>
     <label class="block mt-3">
-      <span class="text-xs font-semibold text-ink-soft">Materia</span>
+      <span class="text-[13px] font-semibold text-ink-soft">Materia</span>
       <input id="slot-subject" list="subjects-list" required maxlength="60" autocomplete="off" placeholder="Matematica"
-        class="mt-1.5 w-full rounded-xl bg-page border border-slate-200 px-3.5 py-2.5 text-[15px]
-               outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+        class="field">
       <datalist id="subjects-list"></datalist>
     </label>
-    <p id="slot-error" class="hidden mt-3 text-sm text-rose-600 bg-rose-50 rounded-xl px-3.5 py-2.5"></p>
-    <div class="flex gap-2 mt-5">
-      <button type="button" id="slot-delete" class="hidden rounded-xl px-3 text-rose-500 font-semibold py-2.5
-        hover:bg-rose-50 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-rose-500">Elimina</button>
-      <button type="button" id="slot-cancel" class="flex-1 rounded-xl bg-page text-ink font-semibold py-2.5
-        hover:bg-slate-200 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Annulla</button>
-      <button type="submit" id="slot-save" class="flex-1 rounded-xl bg-violet-600 text-white font-semibold py-2.5
-        hover:bg-violet-700 transition focus-visible:outline focus-visible:outline-2
-        focus-visible:outline-offset-2 focus-visible:outline-violet-600">Salva</button>
+    <p id="slot-error" class="hidden mt-3 text-sm text-rose-700 border border-rose-200 rounded-lg px-3.5 py-2.5"></p>
+    <div class="flex gap-2 mt-6">
+      <button type="button" id="slot-delete" class="hidden btn btn-ghost-danger">Elimina</button>
+      <button type="button" id="slot-cancel" class="btn btn-quiet flex-1">Annulla</button>
+      <button type="submit" id="slot-save" class="btn btn-primary flex-1">Salva</button>
     </div>
   </form>
 </dialog>
 
-<script src="/app.js?v=15"></script>
+<script src="/app.js?v=24"></script>
 </body>
 </html>

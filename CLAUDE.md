@@ -23,8 +23,12 @@ dependencies, no build step. Frontend is vanilla JS + Tailwind CDN in `public/`.
 
 - Never write credentials to disk. Only Argo tokens go in `data/`, which stays
   out of git together with `references/`.
-- The mobile layout is final. Do not touch it. Desktop only changes go behind
-  the `lg:` breakpoint.
+- The UI is flat, on mobile and desktop alike: white page, thin `slate-200`
+  outlines (`PANEL` and `LIST` in `public/app.js`), small radii, no shadows
+  except `shadow-pop` on the dropdown and the dialogs. Color goes in text, dots
+  and bars, not in backgrounds: the only fills are today (violet) and done (green).
+  Desktop only changes go behind the `lg:` breakpoint.
+- Every tab sets the page title and its summary line with `setHeader`.
 - Averages are computed locally, see `computeAverages` in `public/app.js`. A grade
   counts unless `numMedia === 0` or `faMenoMedia === 'S'`. The average is the mean
   of the subject averages, there is no overall mean of every grade.
